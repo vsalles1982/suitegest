@@ -417,6 +417,65 @@ section h2 {
   font-size: 0.875rem;
 }
 
+/* Comanda (Fase 7) — estrutura visual dos itens */
+.order-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.order-summary-item {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.order-summary-label {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.order-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.order-table th,
+.order-table td {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.order-table thead th {
+  background-color: var(--background);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.order-table tfoot th,
+.order-table tfoot td {
+  border-bottom: none;
+  border-top: 2px solid var(--border);
+  font-weight: 700;
+}
+
+.order-table .price-cell {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .app-header h1 {
     font-size: 1.5rem;

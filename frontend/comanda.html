@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comanda — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="mesas.html" class="back-link">&larr; Voltar para Mesas</a></p>
+      <h1>Comanda</h1>
+      <p class="subtitle">Itens da comanda da mesa</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section aria-live="polite">
+      <h2>Itens da Comanda</h2>
+      <p class="section-description">Estrutura visual preparada para a Fase 7. Os dados exibidos são de demonstração (mock) — a integração com <code>GET /orders/:id</code> será feita em etapa posterior.</p>
+
+      <div class="order-summary">
+        <div class="order-summary-item">
+          <span class="order-summary-label">Mesa</span>
+          <strong id="order-table-number">—</strong>
+        </div>
+        <div class="order-summary-item">
+          <span class="order-summary-label">Status</span>
+          <strong id="order-status">—</strong>
+        </div>
+        <div class="order-summary-item">
+          <span class="order-summary-label">Total</span>
+          <strong id="order-total">—</strong>
+        </div>
+      </div>
+
+      <p id="order-message" class="empty-state" hidden></p>
+
+      <div id="order-table-wrapper" class="table-wrapper">
+        <table class="order-table">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col">Quantidade</th>
+              <th scope="col">Preço Unitário</th>
+              <th scope="col">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody id="order-items-body"></tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colspan="3">Total</th>
+              <td id="order-total-cell" class="price-cell">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="comanda.js"></script>
+</body>
+</html>
