@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SuiteSimulaFuncoes — Gestão de Restaurantes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <h1>SuiteSimulaFuncoes</h1>
+      <p class="subtitle">Sistema de gestão não fiscal para restaurantes, pizzarias e lanchonetes</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="status-section" aria-live="polite">
+      <h2>Status do serviço</h2>
+      <div id="status-container" class="status-container status-checking">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status-text">Verificando backend…</span>
+      </div>
+      <p class="status-hint">O status é verificado automaticamente em <code>http://localhost:3000/health</code>.</p>
+    </section>
+
+    <section class="modules-section">
+      <h2>Módulos</h2>
+      <p class="section-description">Área reservada para os módulos do sistema. Os módulos abaixo serão implementados nas próximas etapas.</p>
+
+      <div class="modules-grid">
+        <article class="module-card">
+          <h3>Cardápio</h3>
+          <p>Cadastro de produtos, categorias, adicionais e composição de itens.</p>
+          <span class="badge">Em breve</span>
+        </article>
+
+        <article class="module-card">
+          <h3>Mesas</h3>
+          <p>Abertura e gestão de mesas, comandas e pedidos (salão, balcão e retirada).</p>
+          <span class="badge">Em breve</span>
+        </article>
+
+        <article class="module-card">
+          <h3>Caixa</h3>
+          <p>Registro de movimentações e fechamento de caixa por turno.</p>
+          <span class="badge">Em breve</span>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
