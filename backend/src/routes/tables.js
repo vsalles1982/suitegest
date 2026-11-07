@@ -58,6 +58,89 @@ async function tableRoutes(fastify) {
       return sqliteErrorToReply(reply, error);
     }
   });
+
+  /**
+   * Transições de fechamento/liberação da mesa
+   * (Fase 8 — docs/backlog-fase8.md, seção 6).
+   *
+   * Destinos aceitos: closed (occupied → closed, sem comanda aberta) e
+   * free (closed → free). Ocupação segue exclusiva do POST /orders
+   * (occupied → free direto e destinos "occupied" retornam 400, não 409).
+   * Verificação de comanda aberta e update na mesma transação (AC-F8-03).
+   */
+  fastify.put('/tables/:id/status', async (request, reply) => {
+    const id = Number(request.params.id);
+    if (!Number.isInteger(id) || id < 1) {
+      return reply.code(400).send({ error: 'Parâmetro "id" inválido.' });
+    }
+
+    const target = request.body?.status;
+    if (target !== 'closed' && target !== 'free') {
+      return reply.code(400)
+        .send({ error: 'Nesta fase o status da mesa aceita apenas "closed" ou "free".' });
+    }
+
+    const db = getDatabase();
+    const table = db.prepare('SELECT * FROM "tables" WHERE id = ?').get(id);
+    if (!table) {
+      return reply.code(404).send({ error: `Mesa ${id} não existe.` });
+    }
+
+    try {
+      db.exec('BEGIN IMMEDIATE');
+
+      if (target === 'closed') {
+        if (table.status === 'closed') {
+          db.exec('ROLLBACK');
+          return reply.code(409).send({ error: `A mesa ${table.number} já está fechada.` });
+        }
+        if (table.status === 'free') {
+          db.exec('ROLLBACK');
+          return reply.code(409)
+            .send({ error: `A mesa ${table.number} está livre; só pode ser fechada quando ocupada.` });
+        }
+
+        // occupied → closed exige comanda fechada (AC-TABLE-02).
+        const openOrder = db
+          .prepare("SELECT id FROM \"orders\" WHERE table_id = ? AND status = 'open'")
+          .get(id);
+        if (openOrder) {
+          db.exec('ROLLBACK');
+          return reply.code(409).send({
+            error: `A mesa ${table.number} possui comanda aberta; feche a comanda antes de fechá-la.`,
+          });
+        }
+
+        db.prepare("UPDATE \"tables\" SET status = 'closed' WHERE id = ?").run(id);
+      } else {
+        // target === 'free'
+        if (table.status === 'free') {
+          db.exec('ROLLBACK');
+          return reply.code(409).send({ error: `A mesa ${table.number} já está livre.` });
+        }
+        if (table.status === 'occupied') {
+          db.exec('ROLLBACK');
+          return reply.code(409).send({
+            error: `A mesa ${table.number} está ocupada; feche a mesa antes de liberá-la.`,
+          });
+        }
+
+        db.prepare("UPDATE \"tables\" SET status = 'free' WHERE id = ?").run(id);
+      }
+
+      db.exec('COMMIT');
+    } catch (error) {
+      try {
+        db.exec('ROLLBACK');
+      } catch (rollbackError) {
+        // Transação já encerrada — nada a fazer.
+      }
+      return sqliteErrorToReply(reply, error);
+    }
+
+    const updated = db.prepare('SELECT * FROM "tables" WHERE id = ?').get(id);
+    return reply.code(200).send(toTableView(updated));
+  });
 }
 
 module.exports = tableRoutes;

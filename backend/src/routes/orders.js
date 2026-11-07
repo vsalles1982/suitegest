@@ -229,6 +229,63 @@ async function orderRoutes(fastify) {
 
     return reply.code(200).send(toOrderView(orderRow, itemRows));
   });
+
+  /**
+   * Fecha uma comanda aberta (Fase 8 — docs/backlog-fase8.md, seção 5).
+   *
+   * Apenas orders.status muda para closed (mesa e itens ficam intactos).
+   * O UPDATE é condicional a status = 'open' dentro de transação, de modo
+   * que um fechamento duplo (concorrência ou repetição) vence só na
+   * primeira chamada; a segunda recebe 409 (AC-CLOSE-10).
+   */
+  fastify.post('/orders/:id/close', async (request, reply) => {
+    const id = validateRouteId(reply, Number(request.params.id));
+    if (!id) return reply;
+
+    const db = getDatabase();
+
+    const orderRow = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+    if (!orderRow) {
+      return reply.code(404).send({ error: `Comanda ${id} não existe.` });
+    }
+    if (orderRow.status === 'closed') {
+      return reply.code(409).send({ error: `A comanda ${id} já está fechada.` });
+    }
+
+    // AC-CLOSE-06: comanda aberta sem itens não fecha.
+    const { total: itemCount } = db
+      .prepare('SELECT COUNT(*) AS total FROM "order_items" WHERE order_id = ?')
+      .get(id);
+    if (itemCount === 0) {
+      return reply.code(409)
+        .send({ error: `A comanda ${id} está aberta sem itens e não pode ser fechada.` });
+    }
+
+    // Atualização atômica e condicionada ao status open.
+    try {
+      db.exec('BEGIN IMMEDIATE');
+
+      const result = db
+        .prepare("UPDATE \"orders\" SET status = 'closed' WHERE id = ? AND status = 'open'")
+        .run(id);
+      if (result.changes === 0) {
+        db.exec('ROLLBACK');
+        return reply.code(409).send({ error: `A comanda ${id} já está fechada.` });
+      }
+
+      db.exec('COMMIT');
+    } catch (error) {
+      try {
+        db.exec('ROLLBACK');
+      } catch (rollbackError) {
+        // Transação já encerrada — nada a fazer.
+      }
+      return sqliteErrorToReply(reply, error);
+    }
+
+    const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+    return reply.code(200).send(toOrderView(updated, getOrderItems(db, id)));
+  });
 }
 
 module.exports = orderRoutes;

@@ -120,6 +120,37 @@
             : 'Disponível para abertura de comanda';
       card.appendChild(detail);
 
+      // Mesa fechada: oferece liberar para o status "free".
+      if (status === 'closed') {
+        var releaseButton = document.createElement('button');
+        releaseButton.type = 'button';
+        releaseButton.className = 'release-button';
+        releaseButton.textContent = 'Liberar Mesa';
+        releaseButton.addEventListener('click', function (event) {
+          event.stopPropagation();
+
+          fetch(TABLES_URL + '/' + getField(table, ['id']) + '/status', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'free' })
+          })
+            .then(function (response) {
+              if (response.status === 200) {
+                loadTables();
+                return null;
+              }
+              return response.json().catch(function () { return null; }).then(function (data) {
+                alert((data && data.error) || ('Erro ao liberar mesa (HTTP ' + response.status + ').'));
+                return null;
+              });
+            })
+            .catch(function () {
+              alert('Erro ao liberar mesa. Verifique se o backend está online.');
+            });
+        });
+        card.appendChild(releaseButton);
+      }
+
       grid.appendChild(card);
     });
   }

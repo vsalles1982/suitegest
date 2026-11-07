@@ -14,6 +14,7 @@
   var statusEl = document.getElementById('order-status');
   var totalEl = document.getElementById('order-total');
   var totalCellEl = document.getElementById('order-total-cell');
+  var closeButton = document.getElementById('close-order-button');
 
   var STATUS_LABELS = {
     open: 'Aberta',
@@ -179,6 +180,32 @@
           ? 'Comanda não encontrada'
           : 'Erro ao carregar comanda. Verifique se o backend está online.');
       });
+  }
+
+  if (closeButton) {
+    closeButton.addEventListener('click', function () {
+      if (!orderId) {
+        alert('Comanda não informada');
+        return;
+      }
+
+      fetch(ORDERS_URL + '/' + orderId + '/close', {
+        method: 'POST'
+      })
+        .then(function (response) {
+          if (response.status === 200) {
+            window.location.href = 'mesas.html';
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            alert((data && data.error) || ('Erro ao fechar comanda (HTTP ' + response.status + ').'));
+            return null;
+          });
+        })
+        .catch(function () {
+          alert('Erro ao fechar comanda. Verifique se o backend está online.');
+        });
+    });
   }
 
   loadOrder();

@@ -154,4 +154,30 @@ function getDatabase() {
   return db;
 }
 
-module.exports = { getDatabase };
+/**
+ * Fecha a conexão do banco de forma controlada:
+ * faz checkpoint do WAL (PRAGMA wal_checkpoint(TRUNCATE)) antes de fechar,
+ * garantindo que os dados vão para o arquivo principal mesmo que o processo
+ * morra logo em seguida (achado F-01 do relatório de QA da Fase 7).
+ */
+function closeDatabase() {
+  if (!db) return;
+
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch (checkpointError) {
+    // Checkpoint pode falhar com outros leitores ativos; o close() abaixo
+    // ainda tenta consolidar o que for possível.
+    console.error('Falha no checkpoint do WAL:', checkpointError.message);
+  }
+
+  try {
+    db.close();
+  } catch (closeError) {
+    console.error('Falha ao fechar o banco:', closeError.message);
+  } finally {
+    db = null;
+  }
+}
+
+module.exports = { getDatabase, closeDatabase };

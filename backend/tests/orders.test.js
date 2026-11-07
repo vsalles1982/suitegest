@@ -252,6 +252,149 @@ test('GET /orders/:id valida id e comanda inexistente', async () => {
   await app.close();
 });
 
+test('POST /orders/:id/close fecha comanda e preserva itens e mesa', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(21);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 2 }],
+  });
+
+  const closeResponse = await app.inject({ method: 'POST', url: `/orders/${created.id}/close` });
+  assert.strictEqual(closeResponse.statusCode, 200);
+
+  const closed = closeResponse.json();
+  assert.strictEqual(closed.status, 'closed'); // AC-CLOSE-01
+  assert.strictEqual(closed.total, created.total); // AC-CLOSE-02/07
+  assert.deepStrictEqual(closed.items, created.items); // itens inalterados
+
+  // Mesa continua occupied (AC-CLOSE-08) — fechar comanda não mexe na mesa.
+  const tableResponse = await app.inject({ method: 'GET', url: '/tables' });
+  const tableRow = tableResponse.json().find((t) => t.id === table.id);
+  assert.strictEqual(tableRow.status, 'occupied');
+
+  // GET após fechamento mantém status closed e itens (AC-CLOSE-09).
+  const getResponse = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(getResponse.statusCode, 200);
+  assert.strictEqual(getResponse.json().status, 'closed');
+
+  await app.close();
+});
+
+test('POST /orders/:id/close em comanda já fechada retorna 409', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(22);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+  await app.inject({ method: 'POST', url: `/orders/${created.id}/close` });
+
+  const second = await app.inject({ method: 'POST', url: `/orders/${created.id}/close` });
+  assert.strictEqual(second.statusCode, 409); // AC-CLOSE-03
+
+  // Registro continua fechado e intacto.
+  const order = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(order.json().status, 'closed');
+
+  await app.close();
+});
+
+test('POST /orders/:id/close em comanda aberta sem itens retorna 409', async () => {
+  clearOrders();
+  const table = seedTable(23);
+
+  // Comanda aberta criada direto no banco, sem itens (estado fora do fluxo
+  // da API, mas possível em vida real — cobre AC-CLOSE-06).
+  const db = getDatabase();
+  const result = db.prepare('INSERT INTO "orders" (table_id) VALUES (?)').run(table.id);
+  const orderId = Number(result.lastInsertRowid);
+
+  const app = await createApp({ logger: false });
+
+  const response = await app.inject({ method: 'POST', url: `/orders/${orderId}/close` });
+  assert.strictEqual(response.statusCode, 409);
+
+  // Permanece open.
+  const order = await app.inject({ method: 'GET', url: `/orders/${orderId}` });
+  assert.strictEqual(order.json().status, 'open');
+
+  await app.close();
+});
+
+test('POST /orders/:id/close trata id inválido e comanda inexistente', async () => {
+  clearOrders();
+
+  const app = await createApp({ logger: false });
+
+  const invalid = await app.inject({ method: 'POST', url: '/orders/abc/close' });
+  assert.strictEqual(invalid.statusCode, 400); // AC-CLOSE-05
+
+  const missing = await app.inject({ method: 'POST', url: '/orders/9999/close' });
+  assert.strictEqual(missing.statusCode, 404); // AC-CLOSE-04
+
+  await app.close();
+});
+
+test('Fluxo completo: abrir → fechar comanda → fechar mesa → liberar', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(24);
+
+  const app = await createApp({ logger: false });
+  const order = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  // AC-FLOW-02: fechar a mesa antes da comanda → 409, mesa permanece occupied.
+  const premature = await app.inject({
+    method: 'PUT',
+    url: `/tables/${table.id}/status`,
+    payload: { status: 'closed' },
+  });
+  assert.strictEqual(premature.statusCode, 409);
+  const stillOccupied = await app.inject({ method: 'GET', url: '/tables' });
+  assert.strictEqual(
+    stillOccupied.json().find((t) => t.id === table.id).status,
+    'occupied',
+  );
+
+  // Encerrar comanda → mesa fecha → mesa liberada.
+  await app.inject({ method: 'POST', url: `/orders/${order.id}/close` });
+
+  await app.inject({
+    method: 'PUT',
+    url: `/tables/${table.id}/status`,
+    payload: { status: 'closed' },
+  });
+  await app.inject({
+    method: 'PUT',
+    url: `/tables/${table.id}/status`,
+    payload: { status: 'free' },
+  });
+
+  const finalTable = await app.inject({ method: 'GET', url: '/tables' });
+  assert.strictEqual(
+    finalTable.json().find((t) => t.id === table.id).status,
+    'free', // AC-FLOW-01
+  );
+
+  // Comanda fechada segue consultável com itens e total (AC-FLOW-03).
+  const finalOrder = await app.inject({ method: 'GET', url: `/orders/${order.id}` });
+  assert.strictEqual(finalOrder.json().status, 'closed');
+  assert.strictEqual(finalOrder.json().items.length, 1);
+
+  await app.close();
+});
+
+
 /** Higieniza o banco após o arquivo: order_items órfãs quebrariam o
  * DELETE FROM products (FK RESTRICT) nos outros arquivos de teste. */
 after(() => {

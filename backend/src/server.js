@@ -8,6 +8,7 @@
  * CORS habilitado para o frontend de desenvolvimento (http://localhost:8090).
  */
 const fastify = require('fastify');
+const { closeDatabase } = require('./database');
 const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
 const tableRoutes = require('./routes/tables');
@@ -62,18 +63,55 @@ async function createApp(
 }
 
 /** Inicialização do servidor. */
+let runningApp = null;
+
+/** Tempo máximo aguardando requisições em curso antes de encerrar forçado. */
+const CLOSE_TIMEOUT_MS = 5000;
+
+/** Fecha o servidor com teto de tempo (não travar o shutdown por keep-alive). */
+async function closeAppWithTimeout(app) {
+  return Promise.race([
+    app.close({ forceCloseConnections: true }),
+    new Promise((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS)),
+  ]);
+}
+
+/** Encerramento gracioso: HTTP fecha primeiro, depois o banco (checkpoint do WAL). */
+async function handleShutdown(signal) {
+  console.log(`Sinal ${signal} recebido — encerrando o serviço...`);
+
+  try {
+    if (runningApp) {
+      await closeAppWithTimeout(runningApp);
+      runningApp = null;
+    }
+  } catch (closeError) {
+    console.error('Erro ao encerrar o servidor HTTP:', closeError);
+  }
+
+  closeDatabase();
+  process.exit(0);
+}
+
+/** Inicialização do servidor. */
 async function start() {
   try {
     const app = await createApp();
+    runningApp = app;
     await app.listen({ port: PORT, host: HOST });
   } catch (err) {
     console.error(err);
+    closeDatabase();
     process.exit(1);
   }
 }
 
 // Só inicia ao ser executado diretamente (permite importar para testes).
+// Handlers registrados APENAS dentro do bloco require.main: os testes e os
+// imports (createApp) não registram handlers de sinais — sem efeitos colaterais.
 if (require.main === module) {
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
   start();
 }
 

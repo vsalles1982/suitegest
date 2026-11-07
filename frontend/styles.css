@@ -482,6 +482,30 @@ section h2 {
   font-weight: 600;
 }
 
+.order-actions {
+  margin-top: 1rem;
+}
+
+/* Botão "Liberar Mesa" (mesas fechadas, Fase 7 — interface apenas) */
+.release-button {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--badge-background);
+  color: var(--header-background);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.release-button:hover,
+.release-button:focus-visible {
+  background-color: #cbd5e1;
+  outline: none;
+}
+
 @media (max-width: 640px) {
   .app-header h1 {
     font-size: 1.5rem;

@@ -56,8 +56,17 @@ PORT=3001 HOST=127.0.0.1 npm start
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
 | GET    | `/tables`          | Lista mesas, ordenadas por número                | Array de `{ id, number, status }`                   |
 | POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
+| PUT    | `/tables/:id/status` | Fecha (`closed`) ou libera (`free`) a mesa     | `{ id, number, status }` (200)                      |
 | POST   | `/orders`          | Abre comanda para mesa, com itens iniciais       | Comanda com `items`, `total`, `totalFormatted` (201)|
 | GET    | `/orders/:id`      | Consulta comanda com itens, subtotais e total    | Comanda com `items`, `total`, `totalFormatted` (200)|
+| POST   | `/orders/:id/close`| Fecha a comanda (itens, preços e mesa intactos)  | Comanda com `status: "closed"` (200)                |
+
+- **Ciclo da mesa (Fase 8, `docs/backlog-fase8.md`):** abrir comanda →
+  `POST /orders/:id/close` (mesa continua `occupied`) → `PUT /tables/:id/status`
+  `closed` (exige comanda fechada) → `PUT /tables/:id/status` `free`.
+- `409` para estados incompatíveis (comanda/mesa já fechada, mesa com comanda
+  aberta, transições proibidas); `400` para destino `occupied`/corpo inválido;
+  `404` para recurso inexistente.
 
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
@@ -90,7 +99,10 @@ pacotes externos):
   `idx_products_created_at`).
 - Pragmas na abertura: `foreign_keys = ON`, `journal_mode = WAL` e
   `busy_timeout = 5000`.
-- Dados persistem entre reinícios do servidor.
+- Dados persistem entre execuções do servidor.
+- **Encerramento gracioso:** `SIGINT`/`SIGTERM` (Ctrl+C ou `kill`) fecham o HTTP
+  primeiro e depois o banco com checkpoint do WAL — dados íntegros no arquivo
+  `data/suitesimula.db`, sem dependência de arquivos `-wal`/`-shm` temporários.
 
 ## Testes
 
