@@ -64,6 +64,23 @@ curl -X POST http://localhost:3000/products \
   -d '{"name":"Pizza Margherita","price":4500,"categoryId":1}'
 ```
 
+## Persistência
+
+A partir desta versão o backend usa **SQLite nativo** (`node:sqlite`, sem
+pacotes externos):
+
+- Arquivo do banco: `backend/data/suitesimula.db` (criado automaticamente na
+  primeira execução). Para usar outro caminho, defina a variável
+  `DATABASE_PATH`.
+- Tabelas: `categories` (inicializada com a categoria padrão
+  `{ id: 1, name: 'Geral' }`) e `products` — schema conforme
+  `../docs/schema-produtos.md` (tabela `STRICT`, FK para `categories` com
+  `ON DELETE RESTRICT`, índices `idx_products_category_id` e
+  `idx_products_created_at`).
+- Pragmas na abertura: `foreign_keys = ON`, `journal_mode = WAL` e
+  `busy_timeout = 5000`.
+- Dados persistem entre reinícios do servidor.
+
 ## Testes
 
 Os testes usam o `node:test` nativo (sem dependências adicionais):
@@ -74,9 +91,9 @@ npm install   # necessário uma vez, para as dependências de runtime
 npm test
 ```
 
-O armazenamento de produtos ainda é em memória (compartilhado por testes e
-processo do servidor). Ao reiniciar o servidor, os dados voltam ao estado
-inicial — persistência real virá em etapa posterior.
+Os testes usam o banco real e limpam a tabela `products` antes de cada teste
+(além de zerar o contador de IDs), para não haver conflito de IDs nem
+interferência entre testes. A categoria `Geral` (id 1) não é removida.
 
 ## Estrutura
 
