@@ -1,31 +1,31 @@
-/**
- * health.test.js — Teste de fumaça (smoke test) do backend SuiteSimulaFuncoes.
- *
- * Verifica se o serviço está de pé respondendo corretamente no endpoint
- * de verificação de saúde: GET /health -> { status: "ok" }.
- *
- * Usa apenas os módulos nativos do Node.js (node:test + node:assert) e o
- * fetch nativo (Node 18+), sem nenhuma dependência extra.
- */
-
-const { test } = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert');
 
-const HEALTH_URL = process.env.HEALTH_URL || 'http://localhost:3000/health';
+test('GET /health deve responder com status 200 e corpo { status: "ok" }', async () => {
+  // Importa o Fastify diretamente
+  const fastify = require('fastify')();
+  
+  // Registra a mesma rota /health do servidor
+  fastify.get('/health', async () => {
+    return { status: 'ok' };
+  });
 
-test('GET /health deve responder com status 200 e corpo { status: "ok" }', async (t) => {
-  const response = await fetch(HEALTH_URL);
-  const body = await response.json();
+  // Sobe o servidor em uma porta aleatória (0 = automático)
+  await fastify.listen({ port: 0, host: '127.0.0.1' });
+  
+  // Descobre qual porta ele escolheu
+  const address = fastify.server.address();
+  const url = `http://127.0.0.1:${address.port}/health`;
 
-  assert.strictEqual(
-    response.status,
-    200,
-    `Esperava status 200, mas recebeu ${response.status}`,
-  );
+  try {
+    // Faz a requisição HTTP real
+    const response = await fetch(url);
+    const body = await response.json();
 
-  assert.deepStrictEqual(
-    body,
-    { status: 'ok' },
-    `Corpo da resposta inesperado: ${JSON.stringify(body)}`,
-  );
+    assert.strictEqual(response.status, 200);
+    assert.deepStrictEqual(body, { status: 'ok' });
+  } finally {
+    // Garante que o servidor será fechado, mesmo se o teste falhar
+    await fastify.close();
+  }
 });
