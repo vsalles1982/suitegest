@@ -18,7 +18,11 @@
   <main class="container">
     <section aria-live="polite">
       <h2>Salão</h2>
-      <p class="section-description">Grade de mesas do estabelecimento. Os dados exibidos são de demonstração (mock) — a integração com o backend será feita na Fase 6.</p>
+      <p class="section-description">Grade de mesas do estabelecimento, carregada de <code>http://localhost:3000/tables</code>.</p>
+
+      <div class="tables-actions">
+        <button type="button" id="add-table-button" class="submit-button">Adicionar Mesa</button>
+      </div>
 
       <p id="tables-message" class="empty-state" hidden></p>
 

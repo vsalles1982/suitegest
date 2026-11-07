@@ -1,34 +1,29 @@
-// mesas.js — Renderiza a grade de mesas do salão (Fase 6, dados mockados)
-//
-// TODO(Fase 6): substituir MOCK_TABLES por fetch para a rota do backend
-// (ex.: GET http://localhost:3000/tables), mantendo renderTables() inalterado.
+// mesas.js — Carrega e renderiza a grade de mesas do salão (Fase 6)
 
 (function () {
   'use strict';
 
-  // Dados mockados apenas para visualizar o layout. Shape planejado:
-  // { id, number, status: 'livre' | 'ocupada' | 'reservada', capacity }
-  var MOCK_TABLES = [
-    { id: 1, number: 1, status: 'livre', capacity: 4 },
-    { id: 2, number: 2, status: 'ocupada', capacity: 4 },
-    { id: 3, number: 3, status: 'livre', capacity: 2 },
-    { id: 4, number: 4, status: 'reservada', capacity: 6 },
-    { id: 5, number: 5, status: 'ocupada', capacity: 2 },
-    { id: 6, number: 6, status: 'livre', capacity: 6 },
-    { id: 7, number: 7, status: 'livre', capacity: 4 },
-    { id: 8, number: 8, status: 'ocupada', capacity: 8 }
-  ];
+  var TABLES_URL = 'http://localhost:3000/tables';
 
   var grid = document.getElementById('tables-grid');
   var message = document.getElementById('tables-message');
+  var addButton = document.getElementById('add-table-button');
 
+  // Status do backend (EN) -> rótulo em português. Mantém compatibilidade
+  // com rótulos legados em português (livre/ocupada/reservada).
   var STATUS_LABELS = {
+    free: 'Livre',
+    occupied: 'Ocupada',
+    closed: 'Fechada',
     livre: 'Livre',
     ocupada: 'Ocupada',
     reservada: 'Reservada'
   };
 
   var STATUS_CLASSES = {
+    free: 'table-status table-status-free',
+    occupied: 'table-status table-status-occupied',
+    closed: 'table-status table-status-closed',
     livre: 'table-status table-status-free',
     ocupada: 'table-status table-status-occupied',
     reservada: 'table-status table-status-reserved'
@@ -50,6 +45,22 @@
 
   function hideMessage() {
     message.hidden = true;
+  }
+
+  function normalizeList(data) {
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray(data.tables)) {
+      return data.tables;
+    }
+    if (data && Array.isArray(data.data)) {
+      return data.data;
+    }
+    if (data && Array.isArray(data.items)) {
+      return data.items;
+    }
+    return [];
   }
 
   function renderTables(tables) {
@@ -88,11 +99,13 @@
 
       var detail = document.createElement('p');
       detail.className = 'table-detail';
-      detail.textContent = status === 'ocupada'
+      detail.textContent = (status === 'occupied' || status === 'ocupada')
         ? 'Em atendimento'
-        : status === 'reservada'
-          ? 'Aguardando clientes'
-          : 'Disponível para abertura de comanda';
+        : status === 'closed'
+          ? 'Fechada para limpeza/manutenção'
+          : status === 'reservada'
+            ? 'Aguardando clientes'
+            : 'Disponível para abertura de comanda';
       card.appendChild(detail);
 
       grid.appendChild(card);
@@ -100,8 +113,62 @@
   }
 
   function loadTables() {
-    // Por enquanto usa dados mockados; na Fase 6, buscar do backend aqui.
-    renderTables(MOCK_TABLES);
+    showMessage('Carregando mesas…');
+
+    fetch(TABLES_URL)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Resposta HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        renderTables(normalizeList(data));
+      })
+      .catch(function () {
+        while (grid.firstChild) {
+          grid.removeChild(grid.firstChild);
+        }
+        showMessage('Erro ao carregar mesas. Verifique se o backend está online.');
+      });
+  }
+
+  if (addButton) {
+    addButton.addEventListener('click', function () {
+      var input = prompt('Informe o número da mesa:');
+      if (input === null) {
+        return;
+      }
+
+      var number = Number(input);
+
+      fetch(TABLES_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: number })
+      })
+        .then(function (response) {
+          if (response.status === 201) {
+            loadTables();
+            return null;
+          }
+          if (response.status === 409) {
+            alert('Mesa já cadastrada');
+            return null;
+          }
+          if (response.status === 400) {
+            alert('Número inválido');
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            alert((data && data.error) || ('Erro ao cadastrar mesa (HTTP ' + response.status + ').'));
+            return null;
+          });
+        })
+        .catch(function () {
+          alert('Erro ao cadastrar mesa. Verifique se o backend está online.');
+        });
+    });
   }
 
   loadTables();
