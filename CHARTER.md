@@ -22,15 +22,17 @@ Princípios que orientam o projeto:
 ## 2. Equipe inicial
 
 A equipe inicial é composta por cinco cargos. Cada cargo tem um modelo LLM
-responsável, todos dentro da camada gratuita disponível no ambiente.
+responsável, todos dentro da camada gratuita validada no ambiente (OpenCode Zen).
 
 | Cargo | Modelo LLM responsável | Escopo principal |
 | --- | --- | --- |
-| Product Manager | `opencode/deepseek-v4.1-flash-free` | Visão de produto, priorização do backlog, critérios de aceite e comunicação com o fundador. |
-| Tech Lead | `opencode/big-pickle` | Arquitetura, padrões técnicos, revisão de código e coordenação entre Backend, Frontend e QA. |
-| Backend | `opencode/glm-5.3-flash-free` | APIs, regras de negócio, persistência de dados, integrações e testes de backend. |
-| Frontend | `opencode/crouton-alpha-free` | Interface web, usabilidade, componentes, acessibilidade e testes de frontend. |
-| QA | `opencode/flint-40b-free` | Planos de teste, testes automatizados, validação de critérios de aceite e relatórios de qualidade. |
+| Product Manager | `Big Pickle` | Visão de produto, priorização do backlog, critérios de aceite e comunicação com o fundador. |
+| Tech Lead | `DeepSeek V4.1 Flash Free` | Arquitetura, padrões técnicos, revisão de código e coordenação entre Backend, Frontend e QA. |
+| Backend | `GLM-5.3-Flash Free` | APIs, regras de negócio, persistência de dados, integrações e testes de backend. |
+| Frontend | `Crouton Alpha Free` | Interface web, usabilidade, componentes, acessibilidade e testes de frontend. |
+| QA | `Flint 40B Free` | Planos de teste, testes automatizados, validação de critérios de aceite e relatórios de qualidade. |
+
+*Nota: Todos os modelos acima foram confirmados como "Free" no catálogo do OpenCode Zen no ambiente local. Modelos locais via Ollama (ex: qwen2.5) ficam reservados para contingência offline.*
 
 Regras de composição da equipe:
 
