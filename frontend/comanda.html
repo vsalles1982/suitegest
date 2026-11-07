@@ -58,9 +58,33 @@
       </div>
 
       <div class="order-actions">
+        <button type="button" id="add-item-button" class="submit-button">Adicionar Item</button>
         <button type="button" id="close-order-button" class="submit-button">Fechar Comanda</button>
       </div>
     </section>
+
+    <div id="add-item-modal" class="modal" hidden>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="add-item-title">
+        <h2 id="add-item-title">Adicionar Item</h2>
+        <form id="add-item-form" class="product-form">
+          <div class="form-field">
+            <label for="productId">Produto</label>
+            <select id="productId" name="productId" required>
+              <option value="">Selecione um produto</option>
+            </select>
+            <p id="products-message" class="form-hint" hidden></p>
+          </div>
+          <div class="form-field">
+            <label for="quantity">Quantidade</label>
+            <input type="number" id="quantity" name="quantity" value="1" min="1" step="1" required />
+          </div>
+          <div class="form-field form-actions">
+            <button type="button" id="cancel-add-item" class="module-link">Cancelar</button>
+            <button type="submit" class="submit-button">Adicionar</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <footer class="app-footer">

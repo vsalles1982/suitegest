@@ -395,6 +395,133 @@ test('Fluxo completo: abrir → fechar comanda → fechar mesa → liberar', asy
 });
 
 
+test('POST /orders/:id/items adiciona item com snapshot de preço', async () => {
+  clearOrders();
+  seedCatalog();
+  const db = getDatabase();
+  const cafe = db.prepare('SELECT id, price FROM products WHERE name = ?').get('Café Comanda');
+  const suco = db.prepare('SELECT id, price FROM products WHERE name = ?').get('Suco Comanda');
+  const table = seedTable(41);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  const addResponse = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/items`,
+    payload: { productId: suco.id, quantity: 2, notes: 'Com gelo' },
+  });
+  assert.strictEqual(addResponse.statusCode, 201);
+
+  const updated = addResponse.json();
+  assert.strictEqual(updated.id, created.id);
+  assert.strictEqual(updated.items.length, 2); // AC: segunda linha independente
+  const added = updated.items[1];
+  assert.strictEqual(added.productId, suco.id);
+  assert.strictEqual(added.quantity, 2);
+  assert.strictEqual(added.unitPrice, 800); // preço do cadastro, não do cliente
+  assert.strictEqual(normalizeNbsp(added.unitPriceFormatted), 'R$ 8,00');
+  assert.strictEqual(added.notes, 'Com gelo');
+  assert.strictEqual(added.subtotal, 1600); // 2 * 800
+  assert.strictEqual(updated.total, created.total + 1600);
+  assert.strictEqual(normalizeNbsp(updated.totalFormatted), 'R$ 61,00');
+
+  // GET devolve o mesmo contrato.
+  const getResponse = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.deepStrictEqual(getResponse.json(), updated);
+
+  // Payload inválido de item único (quantity fora da faixa).
+  const invalidQuantity = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/items`,
+    payload: { productId: cafe.id, quantity: 1000 },
+  });
+  assert.strictEqual(invalidQuantity.statusCode, 400);
+
+  await app.close();
+});
+
+test('POST /orders/:id/items rejeita comanda fechada e produto inexistente', async () => {
+  clearOrders();
+  seedCatalog();
+  const db = getDatabase();
+  const cafe = db.prepare('SELECT id, price FROM products WHERE name = ?').get('Café Comanda');
+  const table = seedTable(42);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  // Fecha a comanda primeiro.
+  await app.inject({ method: 'POST', url: `/orders/${created.id}/close` });
+
+  const closedAttempt = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/items`,
+    payload: { productId: cafe.id, quantity: 1 },
+  });
+  assert.strictEqual(closedAttempt.statusCode, 409);
+  assert.ok(closedAttempt.json().error.includes('fechada'));
+
+  // Comanda permanece fechada e intacta (nenhum item novo).
+  const closedOrder = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(closedOrder.json().status, 'closed');
+  assert.strictEqual(closedOrder.json().items.length, 1);
+
+  // Comanda aberta + produto inexistente → 400 e comanda intacta.
+  const freeTable = seedTable(43);
+  const extraOrder = await openOrder(app, {
+    tableId: freeTable.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  const missingProduct = await app.inject({
+    method: 'POST',
+    url: `/orders/${extraOrder.id}/items`,
+    payload: { productId: 9999, quantity: 1 },
+  });
+  assert.strictEqual(missingProduct.statusCode, 400);
+  const afterMissing = await app.inject({ method: 'GET', url: `/orders/${extraOrder.id}` });
+  assert.strictEqual(afterMissing.json().items.length, 1);
+
+  await app.close();
+});
+
+test('POST /orders/:id/items trata comanda inexistente e id inválido', async () => {
+  clearOrders();
+  seedCatalog();
+
+  const app = await createApp({ logger: false });
+
+  const missing = await app.inject({
+    method: 'POST',
+    url: '/orders/9999/items',
+    payload: { productId: 1, quantity: 1 },
+  });
+  assert.strictEqual(missing.statusCode, 404);
+
+  const invalidId = await app.inject({
+    method: 'POST',
+    url: '/orders/abc/items',
+    payload: { productId: 1, quantity: 1 },
+  });
+  assert.strictEqual(invalidId.statusCode, 400);
+
+  const missingProduct = await app.inject({
+    method: 'POST',
+    url: '/orders/0/items',
+    payload: { productId: 1, quantity: 1 },
+  });
+  assert.strictEqual(missingProduct.statusCode, 400);
+
+  await app.close();
+});
+
 /** Higieniza o banco após o arquivo: order_items órfãs quebrariam o
  * DELETE FROM products (FK RESTRICT) nos outros arquivos de teste. */
 after(() => {

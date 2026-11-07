@@ -4,6 +4,7 @@
   'use strict';
 
   var ORDERS_URL = 'http://localhost:3000/orders';
+  var PRODUCTS_URL = 'http://localhost:3000/products';
 
   var params = new URLSearchParams(window.location.search);
   var orderId = params.get('id');
@@ -15,6 +16,12 @@
   var totalEl = document.getElementById('order-total');
   var totalCellEl = document.getElementById('order-total-cell');
   var closeButton = document.getElementById('close-order-button');
+  var addItemButton = document.getElementById('add-item-button');
+  var addItemModal = document.getElementById('add-item-modal');
+  var addItemForm = document.getElementById('add-item-form');
+  var productSelect = document.getElementById('productId');
+  var productsMessage = document.getElementById('products-message');
+  var cancelAddItemButton = document.getElementById('cancel-add-item');
 
   var STATUS_LABELS = {
     open: 'Aberta',
@@ -152,6 +159,110 @@
     totalCellEl.textContent = '—';
   }
 
+  function normalizeProducts(data) {
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray(data.products)) {
+      return data.products;
+    }
+    if (data && Array.isArray(data.data)) {
+      return data.data;
+    }
+    if (data && Array.isArray(data.items)) {
+      return data.items;
+    }
+    return [];
+  }
+
+  function showProductsMessage(text) {
+    if (!productsMessage) {
+      return;
+    }
+    productsMessage.textContent = text;
+    productsMessage.hidden = !text;
+  }
+
+  function loadProducts() {
+    if (!productSelect) {
+      return;
+    }
+
+    showProductsMessage('');
+    productSelect.disabled = true;
+    while (productSelect.firstChild) {
+      productSelect.removeChild(productSelect.firstChild);
+    }
+    var loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = 'Carregando produtos…';
+    productSelect.appendChild(loadingOption);
+
+    fetch(PRODUCTS_URL)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Resposta HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        var products = normalizeProducts(data);
+        while (productSelect.firstChild) {
+          productSelect.removeChild(productSelect.firstChild);
+        }
+
+        if (products.length === 0) {
+          var emptyOption = document.createElement('option');
+          emptyOption.value = '';
+          emptyOption.textContent = 'Nenhum produto cadastrado';
+          productSelect.appendChild(emptyOption);
+          productSelect.disabled = true;
+          showProductsMessage('Nenhum produto cadastrado');
+          return;
+        }
+
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Selecione um produto';
+        productSelect.appendChild(placeholder);
+
+        products.forEach(function (product) {
+          var option = document.createElement('option');
+          option.value = getField(product, ['id', 'productId']);
+          var priceLabel = product.priceFormatted
+            ? ' — ' + product.priceFormatted
+            : (getField(product, ['price']) === '—' ? '' : ' — ' + formatPrice(product.price));
+          option.textContent = getField(product, ['name', 'nome']) + priceLabel;
+          productSelect.appendChild(option);
+        });
+
+        productSelect.disabled = false;
+      })
+      .catch(function () {
+        while (productSelect.firstChild) {
+          productSelect.removeChild(productSelect.firstChild);
+        }
+        var errorOption = document.createElement('option');
+        errorOption.value = '';
+        errorOption.textContent = 'Erro ao carregar produtos';
+        productSelect.appendChild(errorOption);
+        productSelect.disabled = true;
+        showProductsMessage('Erro ao carregar produtos. Verifique se o backend está online.');
+      });
+  }
+
+  function openAddItemModal() {
+    addItemModal.hidden = false;
+    loadProducts();
+  }
+
+  function closeAddItemModal() {
+    addItemModal.hidden = true;
+    if (addItemForm) {
+      addItemForm.reset();
+    }
+  }
+
   function loadOrder() {
     if (!orderId) {
       clearOrder();
@@ -204,6 +315,56 @@
         })
         .catch(function () {
           alert('Erro ao fechar comanda. Verifique se o backend está online.');
+        });
+    });
+  }
+
+  if (addItemButton && addItemModal) {
+    addItemButton.addEventListener('click', openAddItemModal);
+  }
+
+  if (cancelAddItemButton && addItemModal) {
+    cancelAddItemButton.addEventListener('click', closeAddItemModal);
+  }
+
+  if (addItemModal) {
+    addItemModal.addEventListener('click', function (event) {
+      if (event.target === addItemModal) {
+        closeAddItemModal();
+      }
+    });
+  }
+
+  if (addItemForm) {
+    addItemForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      if (!orderId) {
+        alert('Comanda não informada');
+        return;
+      }
+
+      var productId = Number(document.getElementById('productId').value);
+      var quantity = Number(document.getElementById('quantity').value);
+
+      fetch(ORDERS_URL + '/' + orderId + '/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: productId, quantity: quantity })
+      })
+        .then(function (response) {
+          if (response.status === 201) {
+            closeAddItemModal();
+            loadOrder();
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            alert((data && data.error) || ('Erro ao adicionar item (HTTP ' + response.status + ').'));
+            return null;
+          });
+        })
+        .catch(function () {
+          alert('Erro ao adicionar item. Verifique se o backend está online.');
         });
     });
   }

@@ -28,6 +28,41 @@ function validateRouteId(reply, id) {
   return id;
 }
 
+/**
+ * Valida e normaliza um item de comanda (productId, quantity, notes).
+ * Retorna null com resposta de erro preenchida em caso de falha.
+ * Usada tanto na abertura (itens em lista) quanto na adição (item único).
+ */
+function normalizeAndValidateItem(reply, rawItem, itemLabel) {
+  const { productId, quantity, notes } = rawItem ?? {};
+
+  if (!Number.isInteger(productId) || productId < 1) {
+    reply.code(400).send({ error: `${itemLabel}: "productId" deve ser um inteiro positivo.` });
+    return null;
+  }
+  if (!Number.isInteger(quantity) || quantity < QUANTITY_MIN || quantity > QUANTITY_MAX) {
+    reply.code(400).send({
+      error: `${itemLabel}: "quantity" deve ser um inteiro entre ${QUANTITY_MIN} e ${QUANTITY_MAX}.`,
+    });
+    return null;
+  }
+  if (notes !== undefined && notes !== null) {
+    if (typeof notes !== 'string') {
+      reply.code(400).send({ error: `${itemLabel}: "notes" deve ser texto.` });
+      return null;
+    }
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes.length > NOTES_MAX_LENGTH) {
+      reply.code(400).send({
+        error: `${itemLabel}: "notes" deve ter até ${NOTES_MAX_LENGTH} caracteres.`,
+      });
+      return null;
+    }
+    return { productId, quantity, notes: trimmedNotes === '' ? null : trimmedNotes };
+  }
+  return { productId, quantity, notes: null };
+}
+
 /** Valida o payload de abertura; retorna null (e a resposta de erro) em falha. */
 function validateOpenPayload(reply, body) {
   const tableId = body?.tableId;
@@ -42,36 +77,14 @@ function validateOpenPayload(reply, body) {
     return null;
   }
 
+  const validatedItems = [];
   for (let index = 0; index < items.length; index += 1) {
-    const { productId, quantity, notes } = items[index] ?? {};
-
-    if (!Number.isInteger(productId) || productId < 1) {
-      reply.code(400).send({ error: `Item ${index + 1}: "productId" deve ser um inteiro positivo.` });
-      return null;
-    }
-    if (!Number.isInteger(quantity) || quantity < QUANTITY_MIN || quantity > QUANTITY_MAX) {
-      reply.code(400).send({
-        error: `Item ${index + 1}: "quantity" deve ser um inteiro entre ${QUANTITY_MIN} e ${QUANTITY_MAX}.`,
-      });
-      return null;
-    }
-    if (notes !== undefined && notes !== null) {
-      if (typeof notes !== 'string') {
-        reply.code(400).send({ error: `Item ${index + 1}: "notes" deve ser texto.` });
-        return null;
-      }
-      const trimmedNotes = notes.trim();
-      if (trimmedNotes.length > NOTES_MAX_LENGTH) {
-        reply.code(400).send({
-          error: `Item ${index + 1}: "notes" deve ter até ${NOTES_MAX_LENGTH} caracteres.`,
-        });
-        return null;
-      }
-      items[index] = { ...items[index], notes: trimmedNotes === '' ? null : trimmedNotes };
-    }
+    const item = normalizeAndValidateItem(reply, items[index], `Item ${index + 1}`);
+    if (!item) return null;
+    validatedItems.push(item);
   }
 
-  return { tableId, items };
+  return { tableId, items: validatedItems };
 }
 
 /** Monta a representação de um item da comanda no contrato da API. */
@@ -285,6 +298,68 @@ async function orderRoutes(fastify) {
 
     const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
     return reply.code(200).send(toOrderView(updated, getOrderItems(db, id)));
+  });
+
+  /**
+   * Adiciona um item a uma comanda aberta (evolução da Fase 6).
+   *
+   * Regras: comanda precisa existir (404) e estar open (409 em closed);
+   * produto precisa existir (400). unit_price é snapshot do products.price
+   * lido dentro da transação. Insert do item e verificação de estado
+   * ocorrem em BEGIN IMMEDIATE para não permitir corrida entre
+   * fechamento e adição. O total da comanda é derivado na leitura
+   * (soma dos subtotais) — nada de "total" é persistido (backlog-mesas §3.2).
+   */
+  fastify.post('/orders/:id/items', async (request, reply) => {
+    const id = validateRouteId(reply, Number(request.params.id));
+    if (!id) return reply;
+
+    const item = normalizeAndValidateItem(reply, request.body, 'Item');
+    if (!item) return reply;
+
+    const db = getDatabase();
+
+    try {
+      db.exec('BEGIN IMMEDIATE');
+
+      // Verificações e inserção atômicas: comanda não pode virar closed
+      // no meio da operação (ou vice-versa).
+      const orderRow = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+      if (!orderRow) {
+        db.exec('ROLLBACK');
+        return reply.code(404).send({ error: `Comanda ${id} não existe.` });
+      }
+      if (orderRow.status === 'closed') {
+        db.exec('ROLLBACK');
+        return reply.code(409)
+          .send({ error: `A comanda ${id} está fechada; itens não podem ser adicionados.` });
+      }
+
+      const product = db
+        .prepare('SELECT id, name, price FROM products WHERE id = ?')
+        .get(item.productId);
+      if (!product) {
+        db.exec('ROLLBACK');
+        return reply.code(400).send({ error: `Produto ${item.productId} não existe.` });
+      }
+
+      // Snapshot de preço no momento da adição (mesma regra da abertura).
+      db.prepare(
+        'INSERT INTO "order_items" (order_id, product_id, quantity, unit_price, notes) VALUES (?, ?, ?, ?, ?)',
+      ).run(id, product.id, item.quantity, product.price, item.notes);
+
+      db.exec('COMMIT');
+    } catch (error) {
+      try {
+        db.exec('ROLLBACK');
+      } catch (rollbackError) {
+        // Transação já encerrada — nada a fazer.
+      }
+      return sqliteErrorToReply(reply, error);
+    }
+
+    const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+    return reply.code(201).send(toOrderView(updated, getOrderItems(db, id)));
   });
 }
 

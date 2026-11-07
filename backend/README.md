@@ -60,6 +60,7 @@ PORT=3001 HOST=127.0.0.1 npm start
 | POST   | `/orders`          | Abre comanda para mesa, com itens iniciais       | Comanda com `items`, `total`, `totalFormatted` (201)|
 | GET    | `/orders/:id`      | Consulta comanda com itens, subtotais e total    | Comanda com `items`, `total`, `totalFormatted` (200)|
 | POST   | `/orders/:id/close`| Fecha a comanda (itens, preços e mesa intactos)  | Comanda com `status: "closed"` (200)                |
+| POST   | `/orders/:id/items`| Adiciona item a comanda `open` (snapshot de preço)| Comanda atualizada com novo item (201)              |
 
 - **Ciclo da mesa (Fase 8, `docs/backlog-fase8.md`):** abrir comanda →
   `POST /orders/:id/close` (mesa continua `occupied`) → `PUT /tables/:id/status`
