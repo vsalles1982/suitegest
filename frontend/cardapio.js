@@ -8,6 +8,7 @@
   var message = document.getElementById('products-message');
   var tableWrapper = document.getElementById('products-table-wrapper');
   var tableBody = document.getElementById('products-body');
+  var form = document.getElementById('product-form');
 
   function showMessage(text) {
     message.textContent = text;
@@ -18,14 +19,22 @@
     message.hidden = true;
   }
 
-  function formatPrice(price) {
+  function formatPrice(product) {
+    // O backend retorna price em centavos (inteiro) + priceFormatted pronta.
+    if (product && product.priceFormatted) {
+      return product.priceFormatted;
+    }
+
+    var price = product ? product.price : product;
     if (price === null || price === undefined || price === '') {
       return '—';
     }
 
     var value = typeof price === 'number' ? price : Number(price);
     if (!Number.isNaN(value)) {
-      return value.toLocaleString('pt-BR', {
+      // Inteiro = centavos (contrato atual do backend); decimal = reais (legado).
+      var reais = Number.isInteger(value) ? value / 100 : value;
+      return reais.toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL'
       });
@@ -70,8 +79,8 @@
 
       var values = [
         getField(product, ['name', 'nome', 'title', 'titulo']),
-        getField(product, ['category', 'categoria']),
-        formatPrice(getField(product, ['price', 'preco', 'valor']) === '—' ? '' : getField(product, ['price', 'preco', 'valor'])),
+        getField(product, ['categoryName', 'categoryId', 'category', 'categoria']),
+        formatPrice(product),
         getField(product, ['description', 'descricao'])
       ];
 
@@ -117,6 +126,35 @@
         tableWrapper.hidden = true;
         showMessage('Erro ao carregar produtos. Verifique se o backend está online.');
       });
+  }
+
+  if (form) {
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      var name = document.getElementById('name').value.trim();
+      var price = Number(document.getElementById('price').value);
+      var categoryId = Number(document.getElementById('categoryId').value);
+
+      fetch(PRODUCTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, price: price, categoryId: categoryId })
+      })
+        .then(function (response) {
+          if (response.status === 201) {
+            form.reset();
+            loadProducts();
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            throw new Error((data && data.error) || ('Erro ao cadastrar produto (HTTP ' + response.status + ').'));
+          });
+        })
+        .catch(function (error) {
+          alert(error.message || 'Erro ao cadastrar produto. Verifique se o backend está online.');
+        });
+    });
   }
 
   loadProducts();

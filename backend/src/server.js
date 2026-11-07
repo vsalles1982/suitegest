@@ -47,6 +47,11 @@ async function createApp(
   await registerPlugins(app);
   await app.register(productRoutes);
 
+  /** Verificação de saúde do serviço. */
+  app.get('/health', async () => {
+    return { status: 'ok' };
+  });
+
   return app;
 }
 

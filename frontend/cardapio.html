@@ -16,6 +16,27 @@
   </header>
 
   <main class="container">
+    <section>
+      <h2>Cadastrar Produto</h2>
+      <form id="product-form" class="product-form">
+        <div class="form-field">
+          <label for="name">Nome</label>
+          <input type="text" id="name" name="name" placeholder="Ex.: Pizza Margherita" required />
+        </div>
+        <div class="form-field">
+          <label for="price">Preço em centavos</label>
+          <input type="number" id="price" name="price" placeholder="Ex.: 4500" min="0" step="1" required />
+        </div>
+        <div class="form-field">
+          <label for="categoryId">Categoria ID</label>
+          <input type="number" id="categoryId" name="categoryId" placeholder="Ex.: 1" step="1" required />
+        </div>
+        <div class="form-field form-actions">
+          <button type="submit" class="submit-button">Cadastrar Produto</button>
+        </div>
+      </form>
+    </section>
+
     <section aria-live="polite">
       <h2>Produtos</h2>
       <p class="section-description">Lista de produtos carregada de <code>http://localhost:3000/products</code>.</p>

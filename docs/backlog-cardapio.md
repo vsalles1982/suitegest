@@ -331,7 +331,25 @@ Base: `/api/v1`. Todas as respostas usam JSON. Listagens são paginadas.
 - Confirmar se a disponibilidade será por produto ou também por categoria no
   futuro.
 
-## 9. Definição de pronto
+## 9. Notas de Implementação
+
+- **Preço em centavos:** `precoCentavos` é sempre um número inteiro. Esse é o
+  valor de verdade armazenado no banco e trafegado na API; nunca é usado ponto
+  flutuante para representar dinheiro.
+- **Campo derivado `priceFormatted`:** as respostas de leitura de produtos e
+  adicionais incluem `priceFormatted`, gerado pelo Backend a partir de
+  `precoCentavos` (ex.: `1290` → `"R$ 12,90"`). O campo é somente leitura e não
+  é aceito em requisições de criação ou atualização.
+- **Fonte única:** a formatação para moeda não altera o valor armazenado. O
+  Frontend pode exibir `priceFormatted` diretamente ou formatar `precoCentavos`,
+  desde que use a mesma regra de moeda (BRL).
+- **Compatibilidade:** a ausência de `priceFormatted` em uma resposta não pode
+  impedir a interface de exibir o preço, pois `precoCentavos` é obrigatório.
+- **Testes:** os testes devem cobrir a geração de `priceFormatted` para valores
+  como `0`, `5`, `99`, `100`, `1290` e `10000000`, além da rejeição de
+  `priceFormatted` enviado pelo cliente.
+
+## 10. Definição de pronto
 
 O Módulo de Cardápio é considerado concluído quando:
 

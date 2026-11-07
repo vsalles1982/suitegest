@@ -72,6 +72,9 @@ Regras de composição da equipe:
    mudança de escopo do produto, troca de modelo por cargo, alteração da
    política financeira, mudança de arquitetura que afete mais de um módulo,
    exclusão de dados ou de código, e qualquer ação irreversível.
+5. **Contrato de API:** Preços são armazenados e trafegados em centavos; a
+   formatação para moeda é responsabilidade do Frontend ou do Backend em campos
+   explícitos (ex: `priceFormatted`).
 
 Regras de trabalho adicionais:
 
