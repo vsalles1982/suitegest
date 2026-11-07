@@ -3,12 +3,12 @@
  *
  * Servidor HTTP baseado em Fastify.
  * Endpoint de verificação de saúde: GET /health -> { status: "ok" }
+ * Módulo de Cardápio: GET/POST /products
  *
  * CORS habilitado para o frontend de desenvolvimento (http://localhost:8090).
  */
-const fastify = require('fastify')({
-  logger: true,
-});
+const fastify = require('fastify');
+const productRoutes = require('./routes/products');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -28,25 +28,35 @@ async function corsOriginCheck(origin) {
 }
 
 /** Registro de plugins. */
-async function registerPlugins() {
-  await fastify.register(require('@fastify/cors'), {
+async function registerPlugins(app) {
+  await app.register(require('@fastify/cors'), {
     origin: corsOriginCheck,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 }
 
-/** Verificação de saúde do serviço. */
-fastify.get('/health', async () => {
-  return { status: 'ok' };
-});
+/**
+ * Cria uma instância da aplicação Fastify com plugins e rotas registrados.
+ * Usada tanto pelo servidor real (start) quanto pelos testes (app.inject).
+ */
+async function createApp(
+  { logger = true } = {},
+) {
+  const app = fastify({ logger });
+
+  await registerPlugins(app);
+  await app.register(productRoutes);
+
+  return app;
+}
 
 /** Inicialização do servidor. */
 async function start() {
   try {
-    await registerPlugins();
-    await fastify.listen({ port: PORT, host: HOST });
+    const app = await createApp();
+    await app.listen({ port: PORT, host: HOST });
   } catch (err) {
-    fastify.log.error(err);
+    console.error(err);
     process.exit(1);
   }
 }
@@ -56,4 +66,4 @@ if (require.main === module) {
   start();
 }
 
-module.exports = fastify;
+module.exports = { createApp };

@@ -184,6 +184,84 @@ section h2 {
   margin: 0;
 }
 
+.module-link {
+  display: inline-block;
+  color: var(--header-background);
+  background-color: var(--badge-background);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.module-link:hover,
+.module-link:focus-visible {
+  background-color: #cbd5e1;
+  outline: none;
+}
+
+.back-link {
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.back-link:hover,
+.back-link:focus-visible {
+  color: var(--header-text);
+  text-decoration: underline;
+}
+
+.empty-state {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  color: var(--text-muted);
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.products-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.products-table th,
+.products-table td {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.products-table thead th {
+  background-color: var(--background);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.products-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.products-table .price-cell {
+  white-space: nowrap;
+  font-weight: 600;
+}
+
 @media (max-width: 640px) {
   .app-header h1 {
     font-size: 1.5rem;

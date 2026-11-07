@@ -45,15 +45,38 @@ PORT=3001 HOST=127.0.0.1 npm start
 
 ## Endpoints
 
-| Método | Rota      | Descrição                          | Resposta            |
-| ------ | --------- | ---------------------------------- | ------------------- |
-| GET    | `/health` | Verificação de saúde do serviço    | `{ "status": "ok" }` |
+| Método | Rota        | Descrição                          | Resposta                                       |
+| ------ | ----------- | ---------------------------------- | ---------------------------------------------- |
+| GET    | `/health`   | Verificação de saúde do serviço    | `{ "status": "ok" }`                           |
+| GET    | `/products` | Lista produtos do cardápio         | Array de `{ id, name, price, categoryId }`     |
+| POST   | `/products` | Cadastra um produto (201 on ok)    | `{ id, name, price, categoryId }`              |
+
+- `price` é um **inteiro em centavos** (ex.: `4500` = R$ 45,00).
+- `id` é gerado automaticamente (sequencial).
+- Payload inválido no `POST` retorna `400` com `{ "error": "..." }`.
 
 Exemplo de teste rápido:
 
 ```bash
 curl http://localhost:3000/health
+curl -X POST http://localhost:3000/products \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Pizza Margherita","price":4500,"categoryId":1}'
 ```
+
+## Testes
+
+Os testes usam o `node:test` nativo (sem dependências adicionais):
+
+```bash
+cd backend
+npm install   # necessário uma vez, para as dependências de runtime
+npm test
+```
+
+O armazenamento de produtos ainda é em memória (compartilhado por testes e
+processo do servidor). Ao reiniciar o servidor, os dados voltam ao estado
+inicial — persistência real virá em etapa posterior.
 
 ## Estrutura
 

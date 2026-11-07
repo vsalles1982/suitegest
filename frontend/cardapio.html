@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cardápio — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Cardápio</h1>
+      <p class="subtitle">Produtos cadastrados no sistema de gestão de restaurantes</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section aria-live="polite">
+      <h2>Produtos</h2>
+      <p class="section-description">Lista de produtos carregada de <code>http://localhost:3000/products</code>.</p>
+
+      <p id="products-message" class="empty-state">Carregando produtos…</p>
+
+      <div id="products-table-wrapper" class="table-wrapper" hidden>
+        <table class="products-table">
+          <thead>
+            <tr>
+              <th scope="col">Nome</th>
+              <th scope="col">Categoria</th>
+              <th scope="col">Preço</th>
+              <th scope="col">Descrição</th>
+            </tr>
+          </thead>
+          <tbody id="products-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="cardapio.js"></script>
+</body>
+</html>
