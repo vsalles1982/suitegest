@@ -1,0 +1,18 @@
+{
+  "name": "suitesimulafuncoes-backend",
+  "version": "0.1.0",
+  "description": "Backend do sistema de gestão não fiscal para restaurantes, pizzarias e lanchonetes (SuiteSimulaFuncoes).",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "fastify": "^4.28.3"
+  },
+  "license": "MIT"
+}
