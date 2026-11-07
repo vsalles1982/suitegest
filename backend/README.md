@@ -45,11 +45,18 @@ PORT=3001 HOST=127.0.0.1 npm start
 
 ## Endpoints
 
-| Método | Rota        | Descrição                          | Resposta                                       |
-| ------ | ----------- | ---------------------------------- | ---------------------------------------------- |
-| GET    | `/health`   | Verificação de saúde do serviço    | `{ "status": "ok" }`                           |
-| GET    | `/products` | Lista produtos do cardápio         | Array de `{ id, name, price, categoryId }`     |
-| POST   | `/products` | Cadastra um produto (201 on ok)    | `{ id, name, price, categoryId }`              |
+| Método | Rota               | Descrição                                        | Resposta                                            |
+| ------ | ------------------ | ------------------------------------------------ | --------------------------------------------------- |
+| GET    | `/health`          | Verificação de saúde do serviço                  | `{ "status": "ok" }`                                |
+| GET    | `/categories`      | Lista categorias                                 | Array de `{ id, name }`                             |
+| POST   | `/categories`      | Cria categoria                                   | `{ id, name }` (201)                                |
+| PUT    | `/categories/:id`  | Renomeia categoria                               | `{ id, name }` (200)                                |
+| DELETE | `/categories/:id`  | Exclui categoria (400 se houver produtos)        | `{ "status": "deleted", category }` (200)           |
+| GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, ... }`     |
+| POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
+
+Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
+`400` (validação de payload ou categoria com produtos vinculados ao excluir).
 
 - `price` é um **inteiro em centavos** (ex.: `4500` = R$ 45,00).
 - `id` é gerado automaticamente (sequencial).

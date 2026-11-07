@@ -4,11 +4,14 @@
   'use strict';
 
   var PRODUCTS_URL = 'http://localhost:3000/products';
+  var CATEGORIES_URL = 'http://localhost:3000/categories';
 
   var message = document.getElementById('products-message');
   var tableWrapper = document.getElementById('products-table-wrapper');
   var tableBody = document.getElementById('products-body');
   var form = document.getElementById('product-form');
+  var categorySelect = document.getElementById('categoryId');
+  var categoriesMessage = document.getElementById('categories-message');
 
   function showMessage(text) {
     message.textContent = text;
@@ -66,6 +69,96 @@
       return data.items;
     }
     return [];
+  }
+
+  function normalizeCategories(data) {
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray(data.categories)) {
+      return data.categories;
+    }
+    if (data && Array.isArray(data.data)) {
+      return data.data;
+    }
+    if (data && Array.isArray(data.items)) {
+      return data.items;
+    }
+    return [];
+  }
+
+  function clearSelect() {
+    while (categorySelect.firstChild) {
+      categorySelect.removeChild(categorySelect.firstChild);
+    }
+  }
+
+  function showCategoriesMessage(text) {
+    if (!categoriesMessage) {
+      return;
+    }
+    categoriesMessage.textContent = text;
+    categoriesMessage.hidden = !text;
+  }
+
+  function loadCategories() {
+    if (!categorySelect) {
+      return;
+    }
+
+    showCategoriesMessage('');
+    categorySelect.disabled = true;
+    clearSelect();
+    var loadingOption = document.createElement('option');
+    loadingOption.value = '';
+    loadingOption.textContent = 'Carregando categorias…';
+    categorySelect.appendChild(loadingOption);
+
+    fetch(CATEGORIES_URL)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Resposta HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        var categories = normalizeCategories(data);
+
+        clearSelect();
+
+        if (categories.length === 0) {
+          var emptyOption = document.createElement('option');
+          emptyOption.value = '';
+          emptyOption.textContent = 'Nenhuma categoria cadastrada';
+          categorySelect.appendChild(emptyOption);
+          categorySelect.disabled = true;
+          showCategoriesMessage('Nenhuma categoria cadastrada');
+          return;
+        }
+
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Selecione uma categoria';
+        categorySelect.appendChild(placeholder);
+
+        categories.forEach(function (category) {
+          var option = document.createElement('option');
+          option.value = getField(category, ['id', 'categoryId']);
+          option.textContent = getField(category, ['name', 'nome']);
+          categorySelect.appendChild(option);
+        });
+
+        categorySelect.disabled = false;
+      })
+      .catch(function () {
+        clearSelect();
+        var errorOption = document.createElement('option');
+        errorOption.value = '';
+        errorOption.textContent = 'Erro ao carregar categorias';
+        categorySelect.appendChild(errorOption);
+        categorySelect.disabled = true;
+        showCategoriesMessage('Erro ao carregar categorias. Verifique se o backend está online.');
+      });
   }
 
   function renderProducts(products) {
@@ -157,5 +250,6 @@
     });
   }
 
+  loadCategories();
   loadProducts();
 })();

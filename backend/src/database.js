@@ -65,9 +65,11 @@ function initialize() {
   const instance = new DatabaseSync(databasePath);
 
   // PRAGMAs fora de transação (a FK não tem efeito dentro de uma).
+  // busy_timeout primeiro: evita "database is locked" enquanto outro processo
+  // (ex.: execução paralela dos testes) ainda mantém um lock no arquivo.
+  instance.exec('PRAGMA busy_timeout = 5000;');
   instance.exec('PRAGMA foreign_keys = ON;');
   instance.exec('PRAGMA journal_mode = WAL;');
-  instance.exec('PRAGMA busy_timeout = 5000;');
 
   instance.exec(SCHEMA_SQL);
 
