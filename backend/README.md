@@ -54,6 +54,8 @@ PORT=3001 HOST=127.0.0.1 npm start
 | DELETE | `/categories/:id`  | Exclui categoria (400 se houver produtos)        | `{ "status": "deleted", category }` (200)           |
 | GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, ... }`     |
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
+| GET    | `/tables`          | Lista mesas, ordenadas por número                | Array de `{ id, number, status }`                   |
+| POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
 
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).

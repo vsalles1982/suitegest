@@ -7,6 +7,7 @@
  * Schema da tabela products conforme docs/schema-produtos.md (seções 4, 5 e 7).
  * A tabela categories (pré-requisito da FK) usa o formato definido pela tarefa:
  * id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, tabela STRICT.
+ * Fase 6: tabelas "tables" (mesas) e "orders" (pedidos) — estrutura inicial.
  *
  * Na primeira execução é inserida a categoria padrão { id: 1, name: 'Geral' },
  * com INSERT OR IGNORE — usada para testar com categoryId: 1.
@@ -53,6 +54,40 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_products_created_at
     ON products (created_at);
+
+  -- Fase 6 — Mesas (comandas/pedidos entram nas próximas etapas).
+  -- Mesas: número único (em outros estabelecimentos pode haver mesas de
+  -- "salão" e "balcão"; por enquanto, número global). status controla o
+  -- ciclo operacional simples: livre, ocupada ou fechada (limpeza).
+  -- "tables" é nome usado entre aspas no SQL por legibilidade.
+  CREATE TABLE IF NOT EXISTS "tables" (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    number INTEGER NOT NULL UNIQUE CHECK (number >= 1),
+    status TEXT    NOT NULL
+                   DEFAULT 'free'
+                   CHECK (status IN ('free', 'occupied', 'closed'))
+  ) STRICT;
+
+  -- Tabela de orders criada agora (estrutura da Fase 6); as rotas de pedido
+  -- virão em etapa posterior.
+  CREATE TABLE IF NOT EXISTS "orders" (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id  INTEGER NOT NULL
+                      REFERENCES "tables" (id)
+                      ON UPDATE CASCADE
+                      ON DELETE RESTRICT,
+    status    TEXT    NOT NULL
+                      DEFAULT 'open'
+                      CHECK (status IN ('open', 'closed')),
+    created_at TEXT   NOT NULL
+                      DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS idx_orders_table_id
+    ON "orders" (table_id);
+
+  CREATE INDEX IF NOT EXISTS idx_orders_created_at
+    ON "orders" (created_at);
 `;
 
 /** Criação completa do banco: arquivo, pragmas, schema e categoria padrão. */

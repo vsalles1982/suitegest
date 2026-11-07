@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mesas — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Mesas</h1>
+      <p class="subtitle">Gestão de mesas, comandas e pedidos do salão</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section aria-live="polite">
+      <h2>Salão</h2>
+      <p class="section-description">Grade de mesas do estabelecimento. Os dados exibidos são de demonstração (mock) — a integração com o backend será feita na Fase 6.</p>
+
+      <p id="tables-message" class="empty-state" hidden></p>
+
+      <div id="tables-grid" class="tables-grid"></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="mesas.js"></script>
+</body>
+</html>
