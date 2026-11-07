@@ -59,13 +59,15 @@ planilhas externas.
   (`free`, `occupied` ou `closed`).
 - Tabela `orders`: `id`, `table_id`, `status` (`open` ou `closed`) e
   `created_at`.
+- Tabela `order_items`, criada na Fase 7 e integrada ao schema inline do banco.
+- Índice único parcial `uq_orders_open_per_table`, que limita a uma comanda
+  aberta por mesa.
 - Rotas `GET /tables` e `POST /tables`.
 
-### 3.2 O que precisa ser criado
+### 3.2 Schema implementado de `order_items`
 
-A tabela `orders` atual não armazena itens. Para atender `GET /orders/:id`, é
-necessário criar a tabela `order_items`, que passa a fazer parte do schema
-inline do banco.
+Para atender `GET /orders/:id`, a tabela `order_items` foi criada na Fase 7 com
+os campos abaixo.
 
 | Campo | Tipo | Obrigatório | Regra |
 | --- | --- | --- | --- |
@@ -90,7 +92,8 @@ Regras da tabela `order_items`:
 - Uma comanda aberta mantém a mesa em `occupied`.
 - Uma mesa `closed` não aceita nova comanda até ser liberada para `free`.
 - Toda comanda criada pela API precisa ter pelo menos um item.
-- Operações que alteram mesa e comanda juntas devem ser atômicas.
+- A abertura da comanda e a atualização da mesa são atômicas na implementação
+  atual.
 
 ## 4. Endpoint 1 — `PUT /tables/:id/status`
 
@@ -325,11 +328,121 @@ Retorna 200 com:
 - [ ] **AC-ORDER-21** — `id` não inteiro, menor que 1 ou inválido retorna 400.
 - [ ] **AC-ORDER-22** — A resposta não expõe detalhes internos do banco.
 
-## 9. Riscos e decisões pendentes
+## 9. Notas de Implementação (Fase 7)
+
+> **Fonte:** `backend/src/routes/orders.js`, `backend/src/database.js` e
+> `backend/src/money.js`.
+
+### 9.1 Escopo efetivamente implementado
+
+- `POST /orders`: abre a comanda com pelo menos um item, grava os itens e
+  coloca a mesa em `occupied`.
+- `GET /orders/:id`: retorna a comanda com itens, subtotais, total e campos
+  formatados.
+- `PUT /tables/:id/status`, fechamento de comanda, cancelamento e inclusão de
+  novos itens após a abertura ainda **não** fazem parte desta implementação.
+- Enquanto não houver fechamento, a comanda permanece com `status = open` e a
+  mesa permanece `occupied`.
+
+### 9.2 Persistência
+
+- A tabela `order_items` foi adicionada ao schema inline de
+  `backend/src/database.js`.
+- Campos: `id`, `order_id`, `product_id`, `quantity`, `unit_price`, `notes` e
+  `created_at`.
+- Restrições: `quantity` entre 1 e 999; `unit_price >= 0`; `notes` com até 255
+  caracteres; FKs com `ON DELETE CASCADE` para a comanda e
+  `ON DELETE RESTRICT` para o produto.
+- `subtotal` não é persistido; é calculado na leitura como
+  `quantity * unit_price`.
+- O índice `idx_order_items_order_id` acelera a busca dos itens.
+- O índice único parcial `uq_orders_open_per_table` garante, no banco, no
+  máximo uma comanda aberta por mesa.
+- `orders.status` continua aceitando apenas `open` e `closed`.
+
+### 9.3 Abertura da comanda — `POST /orders`
+
+Fluxo implementado:
+
+1. Valida `tableId` como inteiro positivo.
+2. Exige `items` como lista com pelo menos um item.
+3. Valida cada item: `productId` inteiro positivo, `quantity` inteira de 1 a
+   999 e `notes` textual de até 255 caracteres.
+4. Aplica `trim` em `notes`; texto vazio vira `null`.
+5. Retorna 404 se a mesa não existir.
+6. Retorna 409 se a mesa estiver `closed`.
+7. Retorna 409 se a mesa já tiver comanda aberta.
+8. Busca cada produto uma única vez e retorna 400 se algum não existir.
+9. Executa a abertura em transação `BEGIN IMMEDIATE`:
+   - insere a comanda em `orders`;
+   - insere os itens em `order_items`;
+   - usa `products.price` como `unit_price`;
+   - atualiza a mesa para `occupied`;
+   - confirma com `COMMIT`.
+10. Em erro, executa `ROLLBACK` e converte violação de integridade em 409.
+11. Retorna 201 com a comanda relida do banco.
+
+Detalhes relevantes:
+
+- O preço unitário é **snapshot** de `products.price` no momento da abertura.
+- O cliente não envia preço; `unitPrice` é sempre lido do cadastro.
+- Itens repetidos do mesmo produto são aceitos como linhas separadas.
+- A leitura dos produtos ocorre antes da transação; a gravação usa o preço
+  capturado nessa leitura.
+- A transação cobre comanda, itens e status da mesa; uma falha não deixa
+  comanda parcialmente criada.
+- O índice único parcial é a última defesa contra duas aberturas simultâneas
+  para a mesma mesa.
+
+### 9.4 Consulta da comanda — `GET /orders/:id`
+
+- Valida `id` como inteiro positivo; inválido retorna 400.
+- Comanda inexistente retorna 404.
+- Junta `order_items` com `products` para resolver `productName`.
+- Ordena os itens por `order_items.id`.
+- Comandas `open` e `closed` são consultáveis.
+- `subtotal`, `total` e os campos `*Formatted` são derivados na leitura.
+- Comanda existente sem itens retorna 200 com `items` vazio, embora a API de
+  abertura não permita criar comanda vazia.
+
+### 9.5 Contrato de dinheiro e formatação
+
+- `unitPrice`, `subtotal` e `total` são inteiros em centavos.
+- `unitPriceFormatted`, `subtotalFormatted` e `totalFormatted` são gerados por
+  `formatBRL` em `backend/src/money.js`, com `Intl.NumberFormat` pt-BR/BRL.
+- Não há uso de ponto flutuante para calcular valores monetários.
+- O total é a soma dos subtotais inteiros; não há arredondamento.
+- O nome do produto **não** é snapshot: é resolvido pelo cadastro atual na
+  leitura. Apenas o preço é preservado.
+
+### 9.6 Limitações e diferenças em relação ao backlog
+
+| Tema | Situação atual |
+| --- | --- |
+| Fechar mesa/comanda | Não implementado; `orders.status` e mesa permanecem abertos/ocupados. |
+| Adicionar itens depois da abertura | Não implementado; itens são imutáveis nesta fase. |
+| Cancelar comanda | Não implementado. |
+| `PUT /tables/:id/status` | Não implementado nesta etapa; ocupação ocorre no `POST /orders`. |
+| Valor total persistido | Não persistido; calculado na leitura. |
+| `closed_at` | Não existe na tabela `orders`. |
+| Nome do produto | Resolvido no momento da leitura, não congelado na comanda. |
+
+### 9.7 Integração com o Frontend
+
+- `frontend/comanda.js` consome `GET /orders/:id`.
+- O identificador da comanda é lido da query string (`?id=...`).
+- A tela prioriza os campos formatados enviados pelo Backend
+  (`unitPriceFormatted`, `subtotalFormatted`, `totalFormatted`).
+- Erros 404 são exibidos como “Comanda não encontrada”; falhas de rede ou
+  outros códigos mostram mensagem genérica.
+- A tela não calcula preço a partir do produto; usa o snapshot devolvido pela
+  comanda.
+
+## 10. Riscos e decisões pendentes
 
 | Risco | Impacto | Mitigação |
 | --- | --- | --- |
-| Duas aberturas simultâneas para a mesma mesa | Duas comandas abertas | Transação na abertura e recomendação de índice único parcial para `orders` abertos por mesa. |
+| Duas aberturas simultâneas para a mesma mesa | Duas comandas abertas | Transação `BEGIN IMMEDIATE` e índice único parcial `uq_orders_open_per_table` implementados. |
 | Mesa ocupada manualmente sem comanda | Fechamento sem consumo | Permitido nesta fase; a comanda só é exigida quando existir. |
 | Alteração de preço do produto | Divergência entre cardápio e comanda | Snapshot em `order_items.unit_price`. |
 | Itens imutáveis após a abertura | Não é possível adicionar mais itens | Endpoint de itens fica para a próxima etapa; registrar como limitação conhecida. |
@@ -344,7 +457,7 @@ Decisões pendentes para o fundador ou Tech Lead:
 - Confirmar se o fechamento da mesa deve encerrar automaticamente a comanda ou
   exigir um endpoint próprio de fechamento.
 
-## 10. Definição de pronto
+## 11. Definição de pronto
 
 O módulo de Mesas e Comandas é considerado concluído quando:
 

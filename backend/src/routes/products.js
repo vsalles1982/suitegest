@@ -11,12 +11,7 @@
  *   created_at  -> createdAt
  */
 const { getDatabase } = require('../database');
-
-/** Formatador de moeda do Node (padrão BRL, locale pt-BR). */
-const brlFormatter = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-});
+const { formatBRL } = require('../money');
 
 /**
  * Monta a representação de um produto no contrato da API.
@@ -29,7 +24,7 @@ function toProductView(row, categoryName) {
     name: row.name,
     price: row.price,
     categoryId: row.category_id,
-    priceFormatted: brlFormatter.format(row.price / 100),
+    priceFormatted: formatBRL(row.price),
     createdAt: row.created_at,
     categoryName: categoryName ?? `Categoria ${row.category_id}`,
   };

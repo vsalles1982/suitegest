@@ -11,6 +11,7 @@ const fastify = require('fastify');
 const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
 const tableRoutes = require('./routes/tables');
+const orderRoutes = require('./routes/orders');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -50,6 +51,7 @@ async function createApp(
   await app.register(productRoutes);
   await app.register(categoryRoutes);
   await app.register(tableRoutes);
+  await app.register(orderRoutes);
 
   /** Verificação de saúde do serviço. */
   app.get('/health', async () => {

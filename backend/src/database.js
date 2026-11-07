@@ -88,6 +88,36 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_orders_created_at
     ON "orders" (created_at);
+
+  -- Invariante: no máximo UMA comanda aberta por mesa
+  -- (recomendação da seção 7 do docs/backlog-mesas.md).
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_open_per_table
+    ON "orders" (table_id) WHERE status = 'open';
+
+  -- Itens da comanda (backlog-mesas.md, seção 3.2). unit_price é um
+  -- snapshot do products.price no momento da abertura; subtotal não é
+  -- persistido (calculado como quantity * unit_price na leitura).
+  CREATE TABLE IF NOT EXISTS "order_items" (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id   INTEGER NOT NULL
+               REFERENCES "orders" (id)
+               ON UPDATE CASCADE
+               ON DELETE CASCADE,
+    product_id INTEGER NOT NULL
+               REFERENCES products (id)
+               ON UPDATE CASCADE
+               ON DELETE RESTRICT,
+    quantity   INTEGER NOT NULL
+               CHECK (quantity >= 1 AND quantity <= 999),
+    unit_price INTEGER NOT NULL
+               CHECK (unit_price >= 0),
+    notes      TEXT CHECK (notes IS NULL OR length(notes) <= 255),
+    created_at TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS idx_order_items_order_id
+    ON "order_items" (order_id);
 `;
 
 /** Criação completa do banco: arquivo, pragmas, schema e categoria padrão. */

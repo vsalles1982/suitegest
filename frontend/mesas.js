@@ -82,6 +82,18 @@
 
       var card = document.createElement('article');
       card.className = 'table-card';
+      card.dataset.id = String(getField(table, ['id']));
+      card.dataset.status = status;
+
+      card.addEventListener('click', function () {
+        if (status === 'occupied' || status === 'ocupada') {
+          window.location.href = 'comanda.html?id=' + getField(table, ['id']);
+        } else if (status === 'free' || status === 'livre') {
+          // Mesa livre: pedir o item a adicionar (a abertura da comanda
+          // via POST /orders entra em etapa posterior da Fase 7).
+          prompt('Informe o item a adicionar à Mesa ' + getField(table, ['number', 'numero', 'id']) + ':');
+        }
+      });
 
       var title = document.createElement('h3');
       title.textContent = 'Mesa ' + getField(table, ['number', 'numero', 'id']);

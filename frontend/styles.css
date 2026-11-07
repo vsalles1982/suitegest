@@ -357,6 +357,12 @@ section h2 {
   border-radius: var(--radius);
   padding: 1.25rem;
   box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.table-card:hover,
+.table-card:focus-visible {
+  border-color: var(--header-background);
 }
 
 .table-card h3 {
