@@ -15,6 +15,7 @@
   var statusEl = document.getElementById('order-status');
   var totalEl = document.getElementById('order-total');
   var totalCellEl = document.getElementById('order-total-cell');
+  var paymentEl = document.getElementById('order-payment');
   var closeButton = document.getElementById('close-order-button');
   var addItemButton = document.getElementById('add-item-button');
   var addItemModal = document.getElementById('add-item-modal');
@@ -22,6 +23,10 @@
   var productSelect = document.getElementById('productId');
   var productsMessage = document.getElementById('products-message');
   var cancelAddItemButton = document.getElementById('cancel-add-item');
+  var paymentModal = document.getElementById('payment-modal');
+  var paymentForm = document.getElementById('payment-form');
+  var paymentMethodSelect = document.getElementById('payment-method');
+  var cancelPaymentButton = document.getElementById('cancel-payment');
 
   var STATUS_LABELS = {
     open: 'Aberta',
@@ -99,6 +104,9 @@
     tableNumberEl.textContent = order ? String(getTableNumber(order)) : '—';
     var status = order ? String(getField(order, ['status'])).toLowerCase() : '';
     statusEl.textContent = STATUS_LABELS[status] || (order ? getField(order, ['status']) : '—');
+    paymentEl.textContent = (order && order.payment && order.payment.methodLabel)
+      ? 'Pago com ' + order.payment.methodLabel
+      : '—';
 
     if (items.length === 0) {
       var emptyTotal = getField(order, ['total', 'totalFormatted']);
@@ -157,6 +165,7 @@
     statusEl.textContent = '—';
     totalEl.textContent = '—';
     totalCellEl.textContent = '—';
+    paymentEl.textContent = '—';
   }
 
   function normalizeProducts(data) {
@@ -293,18 +302,58 @@
       });
   }
 
-  if (closeButton) {
+  function openPaymentModal() {
+    paymentModal.hidden = false;
+  }
+
+  function closePaymentModal() {
+    paymentModal.hidden = true;
+    if (paymentForm) {
+      paymentForm.reset();
+    }
+  }
+
+  if (closeButton && paymentModal) {
     closeButton.addEventListener('click', function () {
       if (!orderId) {
         alert('Comanda não informada');
         return;
       }
+      openPaymentModal();
+    });
+  }
+
+  if (cancelPaymentButton && paymentModal) {
+    cancelPaymentButton.addEventListener('click', closePaymentModal);
+  }
+
+  if (paymentModal) {
+    paymentModal.addEventListener('click', function (event) {
+      if (event.target === paymentModal) {
+        closePaymentModal();
+      }
+    });
+  }
+
+  if (paymentForm) {
+    paymentForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+
+      if (!orderId) {
+        alert('Comanda não informada');
+        return;
+      }
+
+      var paymentMethod = paymentMethodSelect.value;
 
       fetch(ORDERS_URL + '/' + orderId + '/close', {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethod: paymentMethod })
       })
         .then(function (response) {
           if (response.status === 200) {
+            closePaymentModal();
             window.location.href = 'mesas.html';
             return null;
           }

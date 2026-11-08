@@ -33,6 +33,10 @@
           <span class="order-summary-label">Total</span>
           <strong id="order-total">—</strong>
         </div>
+        <div class="order-summary-item">
+          <span class="order-summary-label">Pagamento</span>
+          <strong id="order-payment">—</strong>
+        </div>
       </div>
 
       <p id="order-message" class="empty-state" hidden></p>
@@ -81,6 +85,27 @@
           <div class="form-field form-actions">
             <button type="button" id="cancel-add-item" class="module-link">Cancelar</button>
             <button type="submit" class="submit-button">Adicionar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="payment-modal" class="modal" hidden>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="payment-title">
+        <h2 id="payment-title">Forma de Pagamento</h2>
+        <form id="payment-form" class="product-form">
+          <div class="form-field">
+            <label for="payment-method">Forma de Pagamento</label>
+            <select id="payment-method" name="paymentMethod" required>
+              <option value="">Selecione a forma de pagamento</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="cartao">Cartão</option>
+              <option value="pix">Pix</option>
+            </select>
+          </div>
+          <div class="form-field form-actions">
+            <button type="button" id="cancel-payment" class="module-link">Cancelar</button>
+            <button type="submit" class="submit-button">Confirmar Pagamento</button>
           </div>
         </form>
       </div>

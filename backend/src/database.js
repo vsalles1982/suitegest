@@ -79,6 +79,7 @@ const SCHEMA_SQL = `
     status    TEXT    NOT NULL
                       DEFAULT 'open'
                       CHECK (status IN ('open', 'closed')),
+    closed_at TEXT, -- carimbo do fechamento (Bloco 2; null enquanto aberta)
     created_at TEXT   NOT NULL
                       DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   ) STRICT;
@@ -118,6 +119,33 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_order_items_order_id
     ON "order_items" (order_id);
+
+  -- Bloco 2 (Fechamento de Caixa): pagamento registrado no fechamento da
+  -- comanda. amount é o total da comanda em centavos, snapshot do momento
+  -- do fechamento (soma de quantity * unit_price dos order_items). Um
+  -- comanda tem no máximo um pagamento (índice único em order_id).
+  CREATE TABLE IF NOT EXISTS "payments" (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id   INTEGER NOT NULL
+               REFERENCES "orders" (id)
+               ON UPDATE CASCADE
+               ON DELETE CASCADE,
+    method     TEXT    NOT NULL
+               CHECK (method IN ('dinheiro', 'cartao', 'pix')),
+    amount     INTEGER NOT NULL
+               CHECK (amount >= 0),
+    created_at TEXT    NOT NULL
+               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS idx_payments_order_id
+    ON "payments" (order_id);
+
+  CREATE INDEX IF NOT EXISTS idx_payments_created_at
+    ON "payments" (created_at);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_order
+    ON "payments" (order_id);
 `;
 
 /** Criação completa do banco: arquivo, pragmas, schema e categoria padrão. */
@@ -137,6 +165,17 @@ function initialize() {
   instance.exec('PRAGMA journal_mode = WAL;');
 
   instance.exec(SCHEMA_SQL);
+
+  // Migração leve (Bloco 2): bancos criados antes deste bloco não têm
+  // closed_at em "orders". Idempotente: só roda quando a coluna ausente.
+  const orderColumns = instance.prepare('PRAGMA table_info("orders")').all();
+  if (!orderColumns.some((column) => column.name === 'closed_at')) {
+    instance.exec('ALTER TABLE "orders" ADD COLUMN closed_at TEXT;');
+  }
+
+  // O índice da coluna migrada fica aqui (depois do ALTER TABLE) para
+  // não falhar na ordem de criação em bancos pré-existentes.
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_orders_closed_at ON "orders" (closed_at);');
 
   // Categoria padrão para testes/uso inicial — id 1 é ignorado se já existir.
   instance

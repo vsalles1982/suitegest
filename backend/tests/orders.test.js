@@ -17,13 +17,14 @@ function normalizeNbsp(text) {
   return text.replace(/\u00A0/g, ' ');
 }
 
-/** Limpa mesas/comandas (orders, order_items e tables, pela FK) e zera contadores. */
+/** Limpa mesas/comandas (payments, order_items, orders e tables) e zera contadores. */
 function clearOrders() {
   const db = getDatabase();
+  db.prepare('DELETE FROM "payments"').run();
   db.prepare('DELETE FROM "order_items"').run();
   db.prepare('DELETE FROM "orders"').run();
   db.prepare('DELETE FROM "tables"').run();
-  for (const tableName of ['order_items', 'orders', 'tables']) {
+  for (const tableName of ['payments', 'order_items', 'orders', 'tables']) {
     db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(tableName);
   }
 }
@@ -77,6 +78,8 @@ test('POST /orders abre comanda, calcula total e ocupa a mesa', async () => {
   assert.strictEqual(order.tableId, table.id);
   assert.strictEqual(order.status, 'open');
   assert.strictEqual(typeof order.createdAt, 'string');
+  assert.strictEqual(order.closedAt, null); // ainda aberta (Bloco 2)
+  assert.strictEqual(order.payment, null); // ainda sem pagamento (Bloco 2)
   assert.strictEqual(order.items.length, 2);
   assert.strictEqual(order.items[0].unitPrice, 4500);
   assert.strictEqual(normalizeNbsp(order.items[0].unitPriceFormatted), 'R$ 45,00');
@@ -518,6 +521,126 @@ test('POST /orders/:id/items trata comanda inexistente e id inválido', async ()
     payload: { productId: 1, quantity: 1 },
   });
   assert.strictEqual(missingProduct.statusCode, 400);
+
+  await app.close();
+});
+
+test('POST /orders/:id/close com paymentMethod registra pagamento e closed_at', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(25); // café ×2 = R$ 90,00 (9000 centavos)
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 2 }],
+  });
+
+  const closeResponse = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/close`,
+    payload: { paymentMethod: 'cartao' },
+  });
+  assert.strictEqual(closeResponse.statusCode, 200);
+
+  const closed = closeResponse.json();
+  assert.strictEqual(closed.status, 'closed');
+  assert.ok(typeof closed.closedAt === 'string' && closed.closedAt.length > 0); // Bloco 2
+  assert.ok(closed.payment, 'resposta do fechamento deveria trazer payment');
+  assert.strictEqual(closed.payment.method, 'cartao');
+  assert.strictEqual(closed.payment.methodLabel, 'Cartão'); // Bloco 2.1 (contrato QA)
+  assert.strictEqual(closed.payment.amount, 9000); // snapshot do total, em centavos
+  assert.strictEqual(normalizeNbsp(closed.payment.amountFormatted), 'R$ 90,00');
+  assert.ok(typeof closed.payment.createdAt === 'string');
+  assert.strictEqual(closed.payment.orderId, created.id);
+
+  // Persistência: exatamente um pagamento, valor = soma dos itens
+  // (comparações campo a campo: linhas do node:sqlite têm prototype próprio).
+  const db = getDatabase();
+  const paymentRows = db.prepare('SELECT order_id, method, amount FROM "payments"').all();
+  assert.strictEqual(paymentRows.length, 1);
+  assert.strictEqual(paymentRows[0].order_id, created.id);
+  assert.strictEqual(paymentRows[0].method, 'cartao');
+  assert.strictEqual(paymentRows[0].amount, 9000);
+
+  // Fechamento duplo: 409 e nenhum pagamento extra (índice único).
+  const second = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/close`,
+    payload: { paymentMethod: 'pix' },
+  });
+  assert.strictEqual(second.statusCode, 409);
+  assert.strictEqual(db.prepare('SELECT COUNT(*) AS total FROM "payments"').get().total, 1);
+
+  // GET mostra a comanda fechada com o mesmo closedAt e o pagamento
+  // (contrato do QA Bloco 2.1: payment e methodLabel presentes no GET).
+  const getResponse = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  const fetched = getResponse.json();
+  assert.strictEqual(fetched.status, 'closed');
+  assert.strictEqual(fetched.closedAt, closed.closedAt);
+  assert.strictEqual(fetched.payment.method, 'cartao');
+  assert.strictEqual(fetched.payment.methodLabel, 'Cartão');
+  assert.strictEqual(fetched.payment.amount, 9000);
+  await app.close();
+});
+
+test('POST /orders/:id/close sem corpo continua funcionando (legado, sem pagamento)', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(26);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  const response = await app.inject({ method: 'POST', url: `/orders/${created.id}/close` });
+  assert.strictEqual(response.statusCode, 200);
+
+  const closed = response.json();
+  assert.strictEqual(closed.status, 'closed');
+  assert.ok(typeof closed.closedAt === 'string'); // closed_at grava nos dois fluxos
+  assert.strictEqual(closed.payment, null); // fluxo legado: payment explícito e nulo
+
+  const db = getDatabase();
+  assert.strictEqual(db.prepare('SELECT COUNT(*) AS total FROM "payments"').get().total, 0);
+
+  // GET também expõe payment nulo na comanda legada.
+  const fetched = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(fetched.json().payment, null);
+
+  await app.close();
+});
+
+test('POST /orders/:id/close rejeita paymentMethod inválido e comanda permanece aberta', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(27);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 1 }],
+  });
+
+  // paymentMethod presente e inválido → 400. (null/ausente = fechamento
+  // legado sem pagamento, caso coberto pelo teste anterior.)
+  for (const paymentMethod of ['credito', 'BILL', '', 123]) {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/orders/${created.id}/close`,
+      payload: { paymentMethod },
+    });
+    assert.strictEqual(response.statusCode, 400, `esperava 400 para paymentMethod=${paymentMethod}`);
+    assert.ok(response.json().error);
+  }
+
+  // Nenhum pagamento gravado e comanda segue aberta (nada parcial).
+  const db = getDatabase();
+  assert.strictEqual(db.prepare('SELECT COUNT(*) AS total FROM "payments"').get().total, 0);
+  const order = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(order.json().status, 'open');
 
   await app.close();
 });

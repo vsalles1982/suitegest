@@ -14,10 +14,19 @@
  */
 const { getDatabase } = require('../database');
 const { formatBRL } = require('../money');
+const { PAYMENT_METHOD_LABELS, PAYMENT_METHODS } = require('../paymentMethods');
 
 const QUANTITY_MIN = 1;
 const QUANTITY_MAX = 999;
 const NOTES_MAX_LENGTH = 255;
+
+/** Métodos de pagamento aceitos no fechamento (fonte: paymentMethods.js). */
+const PAYMENT_METHODS_ACCEPTED = PAYMENT_METHODS;
+
+/** Carimbo de tempo no mesmo formato do DEFAULT de created_at (UTC, ISO). */
+function nowIsoUtc() {
+  return new Date().toISOString();
+}
 
 /** Valida o id de rota (">= 0" inteiro positivo) e responde 400 se inválido. */
 function validateRouteId(reply, id) {
@@ -106,7 +115,7 @@ function toItemView(row) {
 }
 
 /** Monta a representação da comanda com itens, total e derivados formatados. */
-function toOrderView(orderRow, rowsItems) {
+function toOrderView(orderRow, rowsItems, paymentRow = null) {
   const items = rowsItems.map(toItemView);
   const total = items.reduce((sum, item) => sum + item.subtotal, 0);
 
@@ -115,10 +124,33 @@ function toOrderView(orderRow, rowsItems) {
     tableId: orderRow.table_id,
     status: orderRow.status,
     createdAt: orderRow.created_at,
+    // Bloco 2: carimbo do fechamento (null enquanto a comanda segue aberta).
+    closedAt: orderRow.closed_at ?? null,
+    // Bloco 2 (contrato do QA): pagamento da comanda — objeto com method,
+    // methodLabel, amount e amountFormatted, ou null se não houver.
+    payment: paymentRow ? toPaymentView(paymentRow) : null,
     items,
     total,
     totalFormatted: formatBRL(total),
   };
+}
+
+/** Monta a representação do pagamento registrado no fechamento. */
+function toPaymentView(paymentRow) {
+  return {
+    id: paymentRow.id,
+    orderId: paymentRow.order_id,
+    method: paymentRow.method,
+    methodLabel: PAYMENT_METHOD_LABELS[paymentRow.method] ?? paymentRow.method,
+    amount: paymentRow.amount,
+    amountFormatted: formatBRL(paymentRow.amount),
+    createdAt: paymentRow.created_at,
+  };
+}
+
+/** Linha do pagamento da comanda (ou undefined quando não pago). */
+function getOrderPayment(db, orderId) {
+  return db.prepare('SELECT * FROM "payments" WHERE order_id = ?').get(orderId);
 }
 
 /** Linhas dos itens da comanda (com productName resolvido), ordenadas por id. */
@@ -226,7 +258,7 @@ async function orderRoutes(fastify) {
     return reply.code(201).send(toOrderView(orderRow, itemRows));
   });
 
-  /** Consulta a comanda com itens, subtotais e total. */
+  /** Consulta a comanda com itens, subtotais, total e pagamento. */
   fastify.get('/orders/:id', async (request, reply) => {
     const id = validateRouteId(reply, Number(request.params.id));
     if (!id) return reply;
@@ -240,20 +272,40 @@ async function orderRoutes(fastify) {
 
     const itemRows = getOrderItems(db, id);
 
-    return reply.code(200).send(toOrderView(orderRow, itemRows));
+    return reply.code(200)
+      .send(toOrderView(orderRow, itemRows, getOrderPayment(db, id)));
   });
 
   /**
-   * Fecha uma comanda aberta (Fase 8 — docs/backlog-fase8.md, seção 5).
+   * Fecha uma comanda aberta (Fase 8 — docs/backlog-fase8.md, seção 5;
+   * evolução do Bloco 2 — fechamento com pagamento).
+   *
+   * Corpo opcional: { "paymentMethod": "dinheiro" | "cartao" | "pix" }.
+   *   - com paymentMethod: registra um pagamento na tabela payments com
+   *     amount = total da comanda (snapshot dos order_items) e grava
+   *     closed_at na comanda, tudo na mesma transação;
+   *   - sem corpo (_fluxo legado da Fase 8): fecha sem pagamento, também
+   *     gravando closed_at.
    *
    * Apenas orders.status muda para closed (mesa e itens ficam intactos).
    * O UPDATE é condicional a status = 'open' dentro de transação, de modo
    * que um fechamento duplo (concorrência ou repetição) vence só na
-   * primeira chamada; a segunda recebe 409 (AC-CLOSE-10).
+   * primeira chamada; a segunda recebe 409 (AC-CLOSE-10). Pagamento e
+   * fechamento partilham a transação: nunca existe fechamento vencedor
+   * sem o pagamento correspondente (nem o contrário).
    */
   fastify.post('/orders/:id/close', async (request, reply) => {
     const id = validateRouteId(reply, Number(request.params.id));
     if (!id) return reply;
+
+    // Corpo ausente = fechamento legado sem pagamento. Presente, o
+    // paymentMethod é obrigatório e precisa ser um dos três métodos.
+    const paymentMethod = request.body?.paymentMethod ?? null;
+    if (paymentMethod !== null && !PAYMENT_METHODS_ACCEPTED.has(paymentMethod)) {
+      return reply.code(400).send({
+        error: `Campo "paymentMethod" aceita apenas: ${[...PAYMENT_METHODS_ACCEPTED].join(', ')}.`,
+      });
+    }
 
     const db = getDatabase();
 
@@ -274,19 +326,44 @@ async function orderRoutes(fastify) {
         .send({ error: `A comanda ${id} está aberta sem itens e não pode ser fechada.` });
     }
 
-    // Atualização atômica e condicionada ao status open.
     try {
       db.exec('BEGIN IMMEDIATE');
 
+      // Atualização atômica e condicionada ao status open, registrando o
+      // carimbo do fechamento na mesma linha.
       const result = db
-        .prepare("UPDATE \"orders\" SET status = 'closed' WHERE id = ? AND status = 'open'")
-        .run(id);
+        .prepare(
+          "UPDATE \"orders\" SET status = 'closed', closed_at = ? WHERE id = ? AND status = 'open'",
+        )
+        .run(nowIsoUtc(), id);
       if (result.changes === 0) {
         db.exec('ROLLBACK');
         return reply.code(409).send({ error: `A comanda ${id} já está fechada.` });
       }
 
+      // O total é recalculado DENTRO da transação (a mesma leitura que
+      // protege o fechamento cobre o pagamento): snapshot imutável do valor.
+      let payment = null;
+      if (paymentMethod !== null) {
+        const { total } = db
+          .prepare(
+            'SELECT COALESCE(SUM(quantity * unit_price), 0) AS total FROM "order_items" WHERE order_id = ?',
+          )
+          .get(id);
+        const paymentResult = db
+          .prepare('INSERT INTO "payments" (order_id, method, amount) VALUES (?, ?, ?)')
+          .run(id, paymentMethod, total);
+        payment = db
+          .prepare('SELECT * FROM "payments" WHERE id = ?')
+          .get(paymentResult.lastInsertRowid);
+      }
+
       db.exec('COMMIT');
+
+      // Contrato do QA: a comanda sempre traz payment (null quando legado).
+      const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+      return reply.code(200)
+        .send(toOrderView(updated, getOrderItems(db, id), payment));
     } catch (error) {
       try {
         db.exec('ROLLBACK');
@@ -295,9 +372,6 @@ async function orderRoutes(fastify) {
       }
       return sqliteErrorToReply(reply, error);
     }
-
-    const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
-    return reply.code(200).send(toOrderView(updated, getOrderItems(db, id)));
   });
 
   /**

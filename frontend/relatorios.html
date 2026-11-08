@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relatórios — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Relatórios</h1>
+      <p class="subtitle">Resumo de vendas do estabelecimento</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section aria-live="polite">
+      <h2>Resumo de Vendas</h2>
+      <p class="section-description">Dados carregados de <code>http://localhost:3000/reports/summary</code>.</p>
+
+      <p id="reports-message" class="empty-state">Carregando relatórios…</p>
+
+      <div id="reports-content" hidden>
+        <div class="order-summary">
+          <div class="order-summary-item">
+            <span class="order-summary-label">Total Vendido</span>
+            <strong id="total-vendido">—</strong>
+          </div>
+          <div class="order-summary-item">
+            <span class="order-summary-label">Ticket Médio</span>
+            <strong id="ticket-medio">—</strong>
+          </div>
+          <div class="order-summary-item">
+            <span class="order-summary-label">Comandas Fechadas</span>
+            <strong id="total-comandas">—</strong>
+          </div>
+        </div>
+
+        <h2>Por Forma de Pagamento</h2>
+        <div class="table-wrapper">
+          <table class="order-table">
+            <thead>
+              <tr>
+                <th scope="col">Forma de Pagamento</th>
+                <th scope="col">Total</th>
+              </tr>
+            </thead>
+            <tbody id="by-method-body"></tbody>
+          </table>
+        </div>
+
+        <h2>Itens Mais Vendidos</h2>
+        <div class="table-wrapper">
+          <table class="order-table">
+            <thead>
+              <tr>
+                <th scope="col">Produto</th>
+                <th scope="col">Quantidade</th>
+                <th scope="col">Total</th>
+              </tr>
+            </thead>
+            <tbody id="top-items-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="relatorios.js"></script>
+</body>
+</html>

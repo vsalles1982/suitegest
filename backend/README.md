@@ -59,8 +59,10 @@ PORT=3001 HOST=127.0.0.1 npm start
 | PUT    | `/tables/:id/status` | Fecha (`closed`) ou libera (`free`) a mesa     | `{ id, number, status }` (200)                      |
 | POST   | `/orders`          | Abre comanda para mesa, com itens iniciais       | Comanda com `items`, `total`, `totalFormatted` (201)|
 | GET    | `/orders/:id`      | Consulta comanda com itens, subtotais e total    | Comanda com `items`, `total`, `totalFormatted` (200)|
-| POST   | `/orders/:id/close`| Fecha a comanda (itens, preços e mesa intactos)  | Comanda com `status: "closed"` (200)                |
+| POST   | `/orders/:id/close`| Fecha a comanda; opc. registra pagamento          | Comanda `closed` (200), com `closedAt`; com corpo, também `payment` |
 | POST   | `/orders/:id/items`| Adiciona item a comanda `open` (snapshot de preço)| Comanda atualizada com novo item (201)              |
+| GET    | `/reports/sales`   | Resumo de caixa, com período (query opcional)      | `{ from, to, paidOrders, totalRevenue, ... }` (200) |
+| GET    | `/reports/summary` | Resumo de caixa do histórico completo              | Mesmo shape de `/reports/sales` (200)               |
 
 - **Ciclo da mesa (Fase 8, `docs/backlog-fase8.md`):** abrir comanda →
   `POST /orders/:id/close` (mesa continua `occupied`) → `PUT /tables/:id/status`
@@ -68,6 +70,51 @@ PORT=3001 HOST=127.0.0.1 npm start
 - `409` para estados incompatíveis (comanda/mesa já fechada, mesa com comanda
   aberta, transições proibidas); `400` para destino `occupied`/corpo inválido;
   `404` para recurso inexistente.
+
+### Fechamento de Caixa (Bloco 2) — contratos alinhados ao QA (2.1)
+
+- **`POST /orders/:id/close`** aceita corpo **opcional**:
+  `{"paymentMethod": "dinheiro" | "cartao" | "pix"}`.
+  - Com o corpo: registra um pagamento na tabela `payments`
+    (`amount` = total da comanda em centavos, snapshot dos itens) e grava
+    `closed_at` na comanda, tudo em **uma única transação** — nunca existe
+    fechamento sem pagamento correspondente (nem o contrário).
+  - Sem o corpo (fluxo legado da Fase 8): fecha sem pagamento, e ainda
+    assim grava `closed_at`.
+  - `paymentMethod` inválido → `400` e a comanda **permanece aberta**
+    (operação sem efeitos parciais). Duplo fechamento → `409`, sem segundo
+    pagamento (índice único `uq_payments_order`).
+- **Contrato do QA (2.1) em `GET /orders/:id`** (e consequentemente em
+  todos os retornos de comanda): o objeto `payment` (ou `null`) está
+  sempre presente, com `method`, `methodLabel` ('Dinheiro', 'Cartão',
+  'Pix'), `amount`, `amountFormatted` e `createdAt`. Também há `closedAt`
+  (null enquanto aberta). Rótulos e métodos centralizados em
+  `src/paymentMethods.js`.
+- **Relatórios** (`backend/src/routes/reports.js`) — os DOIS endpoints
+  (`/reports/sales` e `/reports/summary`) retornam os campos do QA:
+  - `ordersCount` — nº de comandas **pagas** (alias legado: `paidOrders`);
+  - `total` / `totalFormatted` — valor total do período (aliases legados:
+    `totalRevenue` / `totalRevenueFormatted` / `totalSold` no summary);
+  - `topItems[]` — itens mais vendidos das comandas **pagas**:
+    `{ productId, productName, quantity, total, totalFormatted }`
+    (com `revenue` / `revenueFormatted` legados; top 5, ordem por
+    `quantity DESC`);
+  - `byMethod[]` — `{ method, label, payments, total, totalFormatted }`
+    (ex.: `label: 'Dinheiro'`).
+  - Compatibilidade frontend (Bloco 2.1): `totalSold`, `paidOrders`,
+    `totalRevenue*`, `averageTicket`, `unpaidClosedOrders`, `from`, `to`
+    continuam presentes.
+  - Sendo a `payments` a base (fluxo de caixa), comanda fechada sem
+    pagamento não entra em `ordersCount`/`total`/`topItems` — conta
+    apenas em `unpaidClosedOrders`.
+  - **Fuso horário (implementado, era pendência):** o filtro por dia usa
+    America/Sao_Paulo (UTC-3 fixo; constante `BUSINESS_UTC_OFFSET` em
+    `src/paymentMethods.js`). O dia local D corresponde ao intervalo UTC
+    `[D 00:00-03:00, D+1 00:00-03:00)` — fechamentos entre 21h e 23h59 de
+    Brasília contam no dia local correto. Para mudar o fuso, ajuste só a
+    constante (SP não tem horário de verão desde 2019).
+- Migração leve: bancos pré-existentes ganham a coluna `orders.closed_at`
+  via `ALTER TABLE` idempotente na inicialização.
 
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
@@ -94,10 +141,13 @@ pacotes externos):
   primeira execução). Para usar outro caminho, defina a variável
   `DATABASE_PATH`.
 - Tabelas: `categories` (inicializada com a categoria padrão
-  `{ id: 1, name: 'Geral' }`) e `products` — schema conforme
+  `{ id: 1, name: 'Geral' }`), `products` — schema conforme
   `../docs/schema-produtos.md` (tabela `STRICT`, FK para `categories` com
   `ON DELETE RESTRICT`, índices `idx_products_category_id` e
-  `idx_products_created_at`).
+  `idx_products_created_at`) — além de `"tables"`, `"orders"` (com
+  `status` e `closed_at`), `"order_items"` (snapshot de `unit_price` no
+  item) e `"payments"` (fechamento de caixa; um pagamento por comanda,
+  `method` em `dinheiro`/`cartao`/`pix`, `amount` em centavos).
 - Pragmas na abertura: `foreign_keys = ON`, `journal_mode = WAL` e
   `busy_timeout = 5000`.
 - Dados persistem entre execuções do servidor.
@@ -115,9 +165,10 @@ npm install   # necessário uma vez, para as dependências de runtime
 npm test
 ```
 
-Os testes usam o banco real e limpam a tabela `products` antes de cada teste
-(além de zerar o contador de IDs), para não haver conflito de IDs nem
-interferência entre testes. A categoria `Geral` (id 1) não é removida.
+Os testes usam o banco real e limpam as tabelas de operação (`payments`,
+`order_items`, `orders`, `tables`, `products`) antes de cada teste (além de
+zerar os contadores de ID), para não haver conflito de IDs nem interferência
+entre testes. A categoria `Geral` (id 1) não é removida.
 
 ## Estrutura
 
@@ -125,8 +176,14 @@ interferência entre testes. A categoria `Geral` (id 1) não é removida.
 backend/
 ├── package.json        # Manifesto e dependências
 ├── README.md           # Este arquivo
+├── data/               # suitesimula.db (SQLite, criado na primeira execução)
+├── tests/              # node:test — orders, tables, categories, products, reports
 └── src/
-    └── server.js       # Servidor Fastify e rotas iniciais
+    ├── server.js       # App Fastify (createApp) e shutdown gracioso
+    ├── database.js     # SQLite, schema e migração leve
+    ├── money.js        # formatBRL (centavos -> moeda)
+    ├── paymentMethods.js # métodos/rótulos de pagamento e fuso do negócio
+    └── routes/         # products, categories, tables, orders, reports
 ```
 
 ## Próximos passos (escopo do CHARTER)

@@ -12,12 +12,14 @@ const assert = require('node:assert');
 const { createApp } = require('../src/server');
 const { getDatabase } = require('../src/database');
 
-/** Limpa mesas (e seus pedidos, pela FK) e reinicia os contadores de id. */
+/** Limpa mesas (e seus pagamentos/pedidos, pelas FKs) e reinicia os contadores de id. */
 function clearTables() {
   const db = getDatabase();
+  db.prepare('DELETE FROM "payments"').run();
   db.prepare('DELETE FROM "order_items"').run();
   db.prepare('DELETE FROM "orders"').run();
   db.prepare('DELETE FROM "tables"').run();
+  db.prepare("DELETE FROM sqlite_sequence WHERE name = 'payments'").run();
   db.prepare("DELETE FROM sqlite_sequence WHERE name = 'tables'").run();
   db.prepare("DELETE FROM sqlite_sequence WHERE name = 'orders'").run();
 }
