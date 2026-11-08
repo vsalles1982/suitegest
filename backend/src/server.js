@@ -42,11 +42,14 @@ async function registerPlugins(app) {
 /**
  * Cria uma instância da aplicação Fastify com plugins e rotas registrados.
  * Usada tanto pelo servidor real (start) quanto pelos testes (app.inject).
+ *
+ * forceCloseConnections: fecha conexões keep-alive no shutdown, evitando
+ * que app.close() espere ociosidade de navegadores.
  */
 async function createApp(
   { logger = true } = {},
 ) {
-  const app = fastify({ logger });
+  const app = fastify({ logger, forceCloseConnections: true });
 
   await registerPlugins(app);
   await app.register(productRoutes);
@@ -57,6 +60,14 @@ async function createApp(
   /** Verificação de saúde do serviço. */
   app.get('/health', async () => {
     return { status: 'ok' };
+  });
+
+  /**
+   * F-01: fechamento do banco acoplado ao ciclo de vida da instância
+   * (checkpoint do WAL + db.close()), sem passagem de callback inválida.
+   */
+  app.addHook('onClose', async () => {
+    closeDatabase();
   });
 
   return app;
@@ -71,7 +82,7 @@ const CLOSE_TIMEOUT_MS = 5000;
 /** Fecha o servidor com teto de tempo (não travar o shutdown por keep-alive). */
 async function closeAppWithTimeout(app) {
   return Promise.race([
-    app.close({ forceCloseConnections: true }),
+    app.close(), // F-01: sem objeto de opções — era a causa do "Callback for 'close' hook is not a function".
     new Promise((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS)),
   ]);
 }
@@ -89,6 +100,8 @@ async function handleShutdown(signal) {
     console.error('Erro ao encerrar o servidor HTTP:', closeError);
   }
 
+  // Redundância deliberada: se o hook onClose não rodou (instance parcial),
+  // fechamos explicitamente. closeDatabase() é idempotente (no-op sem handle).
   closeDatabase();
   process.exit(0);
 }

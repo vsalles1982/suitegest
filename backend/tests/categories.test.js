@@ -189,6 +189,8 @@ test('DELETE de categoria com produtos vinculados é bloqueado', async () => {
   const listResponse = await app.inject({ method: 'GET', url: '/categories' });
   assert.ok(listResponse.json().some((category) => category.id === 1));
 
+  // app.close() agora dispara onClose -> closeDatabase(): reabrir o handle.
   await app.close();
-  db.prepare('DELETE FROM products WHERE name = ?').run('Produto trava');
+  const freshDb = getDatabase();
+  freshDb.prepare('DELETE FROM products WHERE name = ?').run('Produto trava');
 });
