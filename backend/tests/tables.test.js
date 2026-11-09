@@ -39,6 +39,8 @@ function seedProduct(name, price) {
     'INSERT INTO products (name, price, category_id) VALUES (?, ?, ?) ' +
     'ON CONFLICT (category_id, name) DO NOTHING',
   ).run(name, price, 1);
+  // Estoque alto: a baixa automática do Bloco 4 drena stock entre execuções.
+  db.prepare('UPDATE products SET stock = 9999 WHERE name = ?').run(name);
   return db.prepare('SELECT id, price FROM products WHERE name = ?').get(name);
 }
 

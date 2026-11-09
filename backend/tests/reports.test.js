@@ -48,6 +48,8 @@ function seedProduct(name, price) {
   const db = getDatabase();
   db.prepare('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)').run(1, 'Geral');
   db.prepare('INSERT INTO products (name, price, category_id) VALUES (?, ?, ?)').run(name, price, 1);
+  // Estoque alto: a baixa automática do Bloco 4 drena stock entre execuções.
+  db.prepare('UPDATE products SET stock = 9999 WHERE name = ?').run(name);
   return db.prepare('SELECT id FROM products WHERE name = ?').get(name);
 }
 

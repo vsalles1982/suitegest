@@ -161,6 +161,62 @@
       });
   }
 
+  // Estoque mínimo padrão usado quando o produto não traz o mínimo.
+  var DEFAULT_MIN_STOCK = 5;
+
+  function getStock(product) {
+    return getField(product, ['stock', 'estoque', 'stockQuantity', 'quantity', 'quantidade']);
+  }
+
+  function getMinStock(product) {
+    var min = getField(product, ['minStock', 'minimumStock', 'estoqueMinimo', 'minQuantity', 'lowStockThreshold']);
+    return min === '—' ? DEFAULT_MIN_STOCK : Number(min);
+  }
+
+  function isLowStock(product) {
+    var stock = getStock(product);
+    if (stock === '—') {
+      return false;
+    }
+    return Number(stock) < getMinStock(product);
+  }
+
+  function adjustStock(product) {
+    var current = getStock(product);
+    var input = prompt(
+      'Informe a nova quantidade em estoque de ' + getField(product, ['name', 'nome']) +
+      (current === '—' ? ':' : ' (atual: ' + current + '):')
+    );
+    if (input === null) {
+      return;
+    }
+
+    var stock = Number(input);
+    if (!Number.isInteger(stock) || stock < 0) {
+      alert('Quantidade inválida');
+      return;
+    }
+
+    fetch(PRODUCTS_URL + '/' + getField(product, ['id']) + '/stock', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock: stock })
+    })
+      .then(function (response) {
+        if (response.status === 200) {
+          loadProducts();
+          return null;
+        }
+        return response.json().catch(function () { return null; }).then(function (data) {
+          alert((data && data.error) || ('Erro ao ajustar estoque (HTTP ' + response.status + ').'));
+          return null;
+        });
+      })
+      .catch(function () {
+        alert('Erro ao ajustar estoque. Verifique se o backend está online.');
+      });
+  }
+
   function renderProducts(products) {
     // Limpa linhas anteriores (renderização via textContent, sem innerHTML).
     while (tableBody.firstChild) {
@@ -173,8 +229,7 @@
       var values = [
         getField(product, ['name', 'nome', 'title', 'titulo']),
         getField(product, ['categoryName', 'categoryId', 'category', 'categoria']),
-        formatPrice(product),
-        getField(product, ['description', 'descricao'])
+        formatPrice(product)
       ];
 
       values.forEach(function (value, index) {
@@ -185,6 +240,33 @@
         }
         row.appendChild(cell);
       });
+
+      var stockCell = document.createElement('td');
+      var stock = getStock(product);
+      stockCell.textContent = stock === '—' ? '—' : String(stock);
+      if (isLowStock(product)) {
+        var badge = document.createElement('span');
+        badge.className = 'low-stock-badge';
+        badge.textContent = 'Estoque baixo';
+        stockCell.appendChild(document.createTextNode(' '));
+        stockCell.appendChild(badge);
+      }
+      row.appendChild(stockCell);
+
+      var descriptionCell = document.createElement('td');
+      descriptionCell.textContent = getField(product, ['description', 'descricao']);
+      row.appendChild(descriptionCell);
+
+      var actionsCell = document.createElement('td');
+      var adjustButton = document.createElement('button');
+      adjustButton.type = 'button';
+      adjustButton.className = 'release-button';
+      adjustButton.textContent = 'Ajustar Estoque';
+      adjustButton.addEventListener('click', function () {
+        adjustStock(product);
+      });
+      actionsCell.appendChild(adjustButton);
+      row.appendChild(actionsCell);
 
       tableBody.appendChild(row);
     });

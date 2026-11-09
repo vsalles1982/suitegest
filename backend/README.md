@@ -52,7 +52,9 @@ PORT=3001 HOST=127.0.0.1 npm start
 | POST   | `/categories`      | Cria categoria                                   | `{ id, name }` (201)                                |
 | PUT    | `/categories/:id`  | Renomeia categoria                               | `{ id, name }` (200)                                |
 | DELETE | `/categories/:id`  | Exclui categoria (400 se houver produtos)        | `{ "status": "deleted", category }` (200)           |
-| GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, ... }`     |
+| GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, stock, minStock, ... }` |
+| PUT    | `/products/:id/stock` | Ajuste absoluto de estoque (`{ "stock": 12 }`, `{ "minStock": 5 }` opcional) | Produto (200) |
+| GET    | `/products/low-stock` | Produtos com `stock < minStock` (com `missing`) | Array de produto + `missing` (200)                |
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
 | GET    | `/tables`          | Lista mesas, com garçom atribuído                | Array de `{ id, number, status, employeeId, employeeName }` |
 | POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
@@ -148,6 +150,41 @@ contratos a seguir acertados com o fundador e documentados aqui.*
   `payments.employee_id/commission_bps/commission_amount` via
   `ALTER TABLE` sob `PRAGMA table_info`, com índices em `employee_id`.
 
+### Controle de Estoque (Bloco 4)
+
+*O `docs/backlog-estoque.md` não existe no repositório; contratos a seguir
+acertados com o fundador e documentados aqui.*
+
+- **Colunas em `products`**: `stock` (unidades disponíveis, >= 0, padrão 0) e
+  `min_stock` (`minStock` na API, ponto de reposição, padrão 0). **Migração
+  idempotente**: produtos pré-existentes migram com `stock = 0` — o ajuste
+  inicial de cada item é feito uma vez via `PUT /products/:id/stock` com a
+  contagem real do balcão.
+- **Contrato do estoque na API**: a view de produto ganhou os campos
+  aditivos `stock` e `minStock` em todas as leituras (`GET /products`, `POST
+  /products`, ajuste manual e `low-stock`).
+- **`PUT /products/:id/stock` — ajuste manual por CONFERÊNCIA**: o corpo
+  `{ "stock": 12 }` define o **valor absoluto** (a contagem contada, não um
+  delta — segunda conferência com 10 deixa 10, não soma). `{ "minStock": 5 }`
+  opcional define o ponto de reposição. Erros: `stock`/`minStock` não inteiro
+  ou negativo → 400; produto inexistente → 404; id inválido → 400.
+- **`GET /products/low-stock`**: produtos com `stock < minStock`, ordenados
+  pelo faltante (maior primeiro) e por nome; cada item traz `missing =
+  minStock - stock`. Cuidado operacional: produto com `minStock` 0 nunca
+  aparece — sem mínimo configurado não há reposição esperada.
+- **Baixa automática na venda** (`POST /orders` e `POST /orders/:id/items`):
+  a quantidade vendida é subtraída do estoque dentro da transação
+  `BEGIN IMMEDIATE` (sem corrida entre comandas simultâneas); pedidos com o
+  mesmo produto repetido na abertura **somam** as quantidades antes de
+  verificar.
+- **Decisão (fechada com o fundador): venda sem estoque é BLOQUEADA (400)**
+  com `Estoque insuficiente: "<produto>" tem N unidade(s) e a venda pede M`,
+  e nada é gravado (ROLLBACK): sem comanda, sem item, sem baixa parcial, mesa
+  não fica ocupada. A alternativa permissiva (vender negativo com alerta)
+  ficou como possibilidade futura via flag — não implementada.
+- Venda da quantidade **exata** é permitida e pode zerar o estoque (stock 0
+  não é negativo).
+
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
 
@@ -215,8 +252,7 @@ backend/
     ├── database.js     # SQLite, schema e migração leve
     ├── money.js        # formatBRL (centavos -> moeda)
     ├── paymentMethods.js # métodos/rótulos de pagamento e fuso do negócio
-    └── routes/         # products, categories, tables, orders, reports, employees
-```
+    └── routes/         # products, categories, tables, orders, reports, employees```
 
 ## Próximos passos (escopo do CHARTER)
 

@@ -45,6 +45,12 @@ const SCHEMA_SQL = `
                         ON DELETE RESTRICT,
     created_at  TEXT    NOT NULL
                         DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    -- Bloco 4 (Controle de Estoque): quantidade em estoque e mínimo para
+    -- alerta de reposição. Produtos existentes migram com stock = 0.
+    stock       INTEGER NOT NULL DEFAULT 0
+                        CHECK (stock >= 0),
+    min_stock   INTEGER NOT NULL DEFAULT 0
+                        CHECK (min_stock >= 0),
     CONSTRAINT products_name_per_category_unique
       UNIQUE (category_id, name)
   ) STRICT;
@@ -247,6 +253,20 @@ function initialize() {
   instance.exec('CREATE INDEX IF NOT EXISTS idx_tables_employee_id ON "tables" (employee_id);');
   instance.exec('CREATE INDEX IF NOT EXISTS idx_orders_employee_id ON "orders" (employee_id);');
   instance.exec('CREATE INDEX IF NOT EXISTS idx_payments_employee_id ON "payments" (employee_id);');
+
+  // Migração leve (Bloco 4): estoque nos produtos. Produtos pré-existentes
+  // migram com stock = 0 (o ajuste manual via PUT /products/:id/stock
+  // é a forma de atribuir a contagem real de cada item).
+  if (!hasColumn('products', 'stock')) {
+    instance.exec(
+      'ALTER TABLE products ADD COLUMN stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0);',
+    );
+  }
+  if (!hasColumn('products', 'min_stock')) {
+    instance.exec(
+      'ALTER TABLE products ADD COLUMN min_stock INTEGER NOT NULL DEFAULT 0 CHECK (min_stock >= 0);',
+    );
+  }
 
   // Categoria padrão para testes/uso inicial — id 1 é ignorado se já existir.
   instance

@@ -562,6 +562,25 @@ section h2 {
   align-items: center;
 }
 
+/* Alerta de estoque baixo (Bloco 4) */
+.low-stock-badge {
+  display: inline-block;
+  color: var(--offline);
+  background-color: var(--offline-background);
+  border: 1px solid #fca5a5;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.products-table .low-stock-badge {
+  margin-left: 0.5rem;
+}
+
 /* Botão "Liberar Mesa" (mesas fechadas, Fase 7 — interface apenas) */
 .release-button {
   margin-top: 0.75rem;

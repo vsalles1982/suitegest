@@ -41,9 +41,12 @@ function seedCatalog() {
     'INSERT INTO products (name, price, category_id) VALUES (?, ?, ?) ' +
     'ON CONFLICT (category_id, name) DO NOTHING',
   ).run('Suco Comanda', 800, 1);
-  // Restaura os preços padrão (o teste de snapshot altera o preço em disco).
+  // Restaura os preços padrão (o teste de snapshot altera o preço em disco)
+  // e o estoque alto (a baixa automática do Bloco 4 drena stock entre runs).
   db.prepare('UPDATE products SET price = ? WHERE name = ?').run(4500, 'Café Comanda');
   db.prepare('UPDATE products SET price = ? WHERE name = ?').run(800, 'Suco Comanda');
+  db.prepare('UPDATE products SET stock = 9999 WHERE name IN (?, ?)')
+    .run('Café Comanda', 'Suco Comanda');
   return db.prepare('SELECT id, price FROM products WHERE name = ?').get('Café Comanda');
 }
 

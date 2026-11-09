@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Estoque — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="cardapio.html" class="back-link">&larr; Voltar para Cardápio</a></p>
+      <h1>Estoque</h1>
+      <p class="subtitle">Produtos e ajuste de estoque</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section>
+      <h2>Ajustar Estoque</h2>
+      <form id="stock-form" class="product-form">
+        <div class="form-field">
+          <label for="productId">Produto</label>
+          <select id="productId" name="productId" required>
+            <option value="">Selecione um produto</option>
+          </select>
+          <p id="products-message" class="form-hint" hidden></p>
+        </div>
+        <div class="form-field">
+          <label for="stock">Nova Quantidade em Estoque</label>
+          <input type="number" id="stock" name="stock" value="0" min="0" step="1" required />
+        </div>
+        <div class="form-field form-actions">
+          <button type="submit" class="submit-button">Ajustar Estoque</button>
+        </div>
+      </form>
+    </section>
+
+    <section aria-live="polite">
+      <h2>Produtos em Estoque</h2>
+      <p class="section-description">Lista de produtos carregada de <code>http://localhost:3000/products</code>.</p>
+
+      <p id="stock-message" class="empty-state">Carregando produtos…</p>
+
+      <div id="stock-table-wrapper" class="table-wrapper" hidden>
+        <table class="order-table">
+          <thead>
+            <tr>
+              <th scope="col">Produto</th>
+              <th scope="col">Estoque</th>
+              <th scope="col">Mínimo</th>
+              <th scope="col">Status</th>
+              <th scope="col">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="stock-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="estoque.js"></script>
+</body>
+</html>

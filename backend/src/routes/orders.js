@@ -257,6 +257,31 @@ async function orderRoutes(fastify) {
         .run(tableId, tableNow.employee_id ?? null);
       orderId = orderResult.lastInsertRowid;
 
+      // Bloco 4: baixa de estoque. A leitura do estoque é feita DENTRO da
+      // transação (BEGIN IMMEDIATE serializa escritas; não há corrida de
+      // duas comandas consumindo as mesmas unidades). Quantidades são
+      // somadas por productId (o mesmo produto pode vir em dois itens).
+      // Estoque insuficiente BLOQUEIA a venda (400) — decisão documentada
+      // no backend/README.md; transação íntegra via ROLLBACK.
+      const deduct = db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?');
+      const stockByProduct = new Map();
+      for (const item of items) {
+        const sum = (stockByProduct.get(item.productId) ?? 0) + item.quantity;
+        stockByProduct.set(item.productId, sum);
+      }
+      for (const [productId, quantity] of stockByProduct) {
+        const { stock, name } = db
+          .prepare('SELECT stock, name FROM products WHERE id = ?')
+          .get(productId);
+        if (stock < quantity) {
+          db.exec('ROLLBACK');
+          return reply.code(400).send({
+            error: `Estoque insuficiente: "${name}" tem ${stock} unidade(s) e a venda pede ${quantity}. Não é possível abrir a comanda.`,
+          });
+        }
+        deduct.run(quantity, productId);
+      }
+
       const insertItem = db.prepare(
         'INSERT INTO "order_items" (order_id, product_id, quantity, unit_price, notes) VALUES (?, ?, ?, ?, ?)',
       );
@@ -478,12 +503,23 @@ async function orderRoutes(fastify) {
       }
 
       const product = db
-        .prepare('SELECT id, name, price FROM products WHERE id = ?')
+        .prepare('SELECT id, name, price, stock FROM products WHERE id = ?')
         .get(item.productId);
       if (!product) {
         db.exec('ROLLBACK');
         return reply.code(400).send({ error: `Produto ${item.productId} não existe.` });
       }
+
+      // Bloco 4: baixa de estoque do item único — mesma regra da abertura
+      // (insuficiente bloqueia a venda, 400; transação via ROLLBACK).
+      if (product.stock < item.quantity) {
+        db.exec('ROLLBACK');
+        return reply.code(400).send({
+          error: `Estoque insuficiente: "${product.name}" tem ${product.stock} unidade(s) e a venda pede ${item.quantity}.`,
+        });
+      }
+      db.prepare('UPDATE products SET stock = stock - ? WHERE id = ?')
+        .run(item.quantity, product.id);
 
       // Snapshot de preço no momento da adição (mesma regra da abertura).
       db.prepare(
