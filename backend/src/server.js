@@ -14,6 +14,7 @@ const categoryRoutes = require('./routes/categories');
 const tableRoutes = require('./routes/tables');
 const orderRoutes = require('./routes/orders');
 const reportRoutes = require('./routes/reports');
+const employeeRoutes = require('./routes/employees');
 
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -58,6 +59,7 @@ async function createApp(
   await app.register(tableRoutes);
   await app.register(orderRoutes);
   await app.register(reportRoutes);
+  await app.register(employeeRoutes);
 
   /** Verificação de saúde do serviço. */
   app.get('/health', async () => {

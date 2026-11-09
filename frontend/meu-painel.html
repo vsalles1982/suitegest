@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meu Painel — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Meu Painel</h1>
+      <p class="subtitle">Mesas atribuídas ao garçom logado</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section aria-live="polite">
+      <h2>Minhas Mesas</h2>
+      <p class="section-description">Selecione o garçom para simular o login e ver apenas as mesas atribuídas a ele.</p>
+
+      <div class="product-form panel-filter">
+        <div class="form-field">
+          <label for="employee-select">Garçom</label>
+          <select id="employee-select" required>
+            <option value="">Selecione um garçom</option>
+          </select>
+          <p id="employee-message" class="form-hint" hidden></p>
+        </div>
+      </div>
+
+      <p id="panel-message" class="empty-state" hidden></p>
+
+      <div id="tables-grid" class="tables-grid"></div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="meu-painel.js"></script>
+</body>
+</html>

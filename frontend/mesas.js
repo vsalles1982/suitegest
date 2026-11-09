@@ -4,10 +4,13 @@
   'use strict';
 
   var TABLES_URL = 'http://localhost:3000/tables';
+  var EMPLOYEES_URL = 'http://localhost:3000/employees';
 
   var grid = document.getElementById('tables-grid');
   var message = document.getElementById('tables-message');
   var addButton = document.getElementById('add-table-button');
+
+  var employees = [];
 
   // Status do backend (EN) -> rótulo em português. Mantém compatibilidade
   // com rótulos legados em português (livre/ocupada/reservada).
@@ -61,6 +64,97 @@
       return data.items;
     }
     return [];
+  }
+
+  function getEmployeeId(table) {
+    var value = getField(table, ['employeeId', 'employee_id', 'waiterId', 'garcomId', 'assignedEmployeeId', 'employee']);
+    if (value !== '—' && typeof value === 'object') {
+      return getField(value, ['id']);
+    }
+    return value;
+  }
+
+  function assignEmployee(table, employeeId) {
+    fetch(TABLES_URL + '/' + getField(table, ['id']) + '/employee', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: employeeId ? Number(employeeId) : null })
+    })
+      .then(function (response) {
+        if (response.status === 200) {
+          loadTables();
+          return null;
+        }
+        return response.json().catch(function () { return null; }).then(function (data) {
+          alert((data && data.error) || ('Erro ao atribuir garçom (HTTP ' + response.status + ').'));
+          return null;
+        });
+      })
+      .catch(function () {
+        alert('Erro ao atribuir garçom. Verifique se o backend está online.');
+      });
+  }
+
+  function createEmployeeSelect(table) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'form-field table-employee-field';
+
+    var label = document.createElement('label');
+    label.textContent = 'Garçom';
+    wrapper.appendChild(label);
+
+    var select = document.createElement('select');
+    select.className = 'employee-select';
+
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Selecione um garçom';
+    select.appendChild(placeholder);
+
+    employees.forEach(function (employee) {
+      var option = document.createElement('option');
+      option.value = getField(employee, ['id']);
+      option.textContent = getField(employee, ['name', 'nome']);
+      if (String(getEmployeeId(table)) === String(getField(employee, ['id']))) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+
+    select.addEventListener('click', function (event) {
+      event.stopPropagation();
+    });
+    select.addEventListener('change', function (event) {
+      event.stopPropagation();
+      assignEmployee(table, select.value);
+    });
+
+    wrapper.appendChild(select);
+    return wrapper;
+  }
+
+  function loadEmployees() {
+    return fetch(EMPLOYEES_URL)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Resposta HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        if (Array.isArray(data)) {
+          employees = data;
+        } else if (data && Array.isArray(data.employees)) {
+          employees = data.employees;
+        } else if (data && Array.isArray(data.data)) {
+          employees = data.data;
+        } else {
+          employees = [];
+        }
+      })
+      .catch(function () {
+        employees = [];
+      });
   }
 
   function renderTables(tables) {
@@ -119,6 +213,8 @@
             ? 'Aguardando clientes'
             : 'Disponível para abertura de comanda';
       card.appendChild(detail);
+
+      card.appendChild(createEmployeeSelect(table));
 
       // Mesa fechada: oferece liberar para o status "free".
       if (status === 'closed') {
@@ -214,5 +310,5 @@
     });
   }
 
-  loadTables();
+  loadEmployees().then(loadTables);
 })();

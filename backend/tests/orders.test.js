@@ -645,6 +645,58 @@ test('POST /orders/:id/close rejeita paymentMethod inválido e comanda permanece
   await app.close();
 });
 
+test('Comanda com garçom: comissão calculada e exposta no fechamento e no GET', async () => {
+  clearOrders();
+  const cafe = seedCatalog();
+  const table = seedTable(28);
+
+  // Garçom com 1000 bps (10%) atrelado à mesa — atribuição direta no banco,
+  // pois a rota de atribuição é coberta em employees.test.js.
+  const db = getDatabase();
+  const waiterInsert = db
+    .prepare('INSERT INTO employees (name, commission_bps, active) VALUES (?, ?, 1)')
+    .run('Garçom B2Test', 1000);
+  const waiterId = Number(waiterInsert.lastInsertRowid);
+  db.prepare('UPDATE "tables" SET employee_id = ? WHERE id = ?').run(waiterId, table.id);
+
+  const app = await createApp({ logger: false });
+  const created = await openOrder(app, {
+    tableId: table.id,
+    items: [{ productId: cafe.id, quantity: 2 }], // 2 × 4500 = 9000 centavos
+  });
+
+  assert.strictEqual(created.employeeId, waiterId); // copiado da mesa (Bloco 3)
+  assert.strictEqual(created.employeeName, 'Garçom B2Test');
+
+  const closeResponse = await app.inject({
+    method: 'POST',
+    url: `/orders/${created.id}/close`,
+    payload: { paymentMethod: 'dinheiro' },
+  });
+  assert.strictEqual(closeResponse.statusCode, 200);
+
+  const payment = closeResponse.json().payment;
+  assert.strictEqual(payment.employeeId, waiterId);
+  assert.strictEqual(payment.commissionBps, 1000);
+  assert.strictEqual(payment.commissionAmount, 900); // 9000 × 10% = 900 centavos
+  assert.strictEqual(normalizeNbsp(payment.commissionAmountFormatted), 'R$ 9,00');
+
+  // GET reflete o snapshot de comissão do pagamento.
+  const fetched = await app.inject({ method: 'GET', url: `/orders/${created.id}` });
+  assert.strictEqual(fetched.json().payment.commissionAmount, 900);
+  assert.strictEqual(fetched.json().employeeName, 'Garçom B2Test');
+
+  // Persistência: linha do pagamento com employee_id e comissão no disco.
+  const row = db
+    .prepare('SELECT employee_id, commission_bps, commission_amount FROM "payments"')
+    .get();
+  assert.strictEqual(row.employee_id, waiterId);
+  assert.strictEqual(row.commission_bps, 1000);
+  assert.strictEqual(row.commission_amount, 900);
+
+  await app.close();
+});
+
 /** Higieniza o banco após o arquivo: order_items órfãs quebrariam o
  * DELETE FROM products (FK RESTRICT) nos outros arquivos de teste. */
 after(() => {

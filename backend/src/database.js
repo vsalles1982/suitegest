@@ -55,30 +55,55 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_products_created_at
     ON products (created_at);
 
+  -- Bloco 3 (Gestão de Garçons): funcionários e atribuição às mesas.
+  -- commission_bps é a comissão em basis points (1000 = 10%; 10000 = 100%).
+  -- active = 0 desliga o funcionário sem apagar histórico.
+  CREATE TABLE IF NOT EXISTS "employees" (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    name           TEXT    NOT NULL UNIQUE COLLATE NOCASE
+                           CHECK (length(trim(name)) BETWEEN 2 AND 80),
+    commission_bps INTEGER NOT NULL DEFAULT 0
+                           CHECK (commission_bps >= 0 AND commission_bps <= 10000),
+    active         INTEGER NOT NULL DEFAULT 1
+                           CHECK (active IN (0, 1)),
+    created_at     TEXT    NOT NULL
+                           DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ) STRICT;
+
   -- Fase 6 — Mesas (comandas/pedidos entram nas próximas etapas).
   -- Mesas: número único (em outros estabelecimentos pode haver mesas de
   -- "salão" e "balcão"; por enquanto, número global). status controla o
   -- ciclo operacional simples: livre, ocupada ou fechada (limpeza).
+  -- employee_id (Bloco 3): garçom atualmente atribuído à mesa; copiado
+  -- para a comanda no momento da abertura (quem abriu/atende).
   -- "tables" é nome usado entre aspas no SQL por legibilidade.
   CREATE TABLE IF NOT EXISTS "tables" (
-    id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    number INTEGER NOT NULL UNIQUE CHECK (number >= 1),
-    status TEXT    NOT NULL
-                   DEFAULT 'free'
-                   CHECK (status IN ('free', 'occupied', 'closed'))
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    number      INTEGER NOT NULL UNIQUE CHECK (number >= 1),
+    status      TEXT    NOT NULL
+                        DEFAULT 'free'
+                        CHECK (status IN ('free', 'occupied', 'closed')),
+    employee_id INTEGER
+                        REFERENCES employees (id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL
   ) STRICT;
 
   -- Tabela de orders criada agora (estrutura da Fase 6); as rotas de pedido
   -- virão em etapa posterior.
   CREATE TABLE IF NOT EXISTS "orders" (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    table_id  INTEGER NOT NULL
-                      REFERENCES "tables" (id)
-                      ON UPDATE CASCADE
-                      ON DELETE RESTRICT,
-    status    TEXT    NOT NULL
-                      DEFAULT 'open'
-                      CHECK (status IN ('open', 'closed')),
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_id    INTEGER NOT NULL
+                        REFERENCES "tables" (id)
+                        ON UPDATE CASCADE
+                        ON DELETE RESTRICT,
+    employee_id INTEGER
+                        REFERENCES employees (id)
+                        ON UPDATE CASCADE
+                        ON DELETE SET NULL,
+    status      TEXT    NOT NULL
+                        DEFAULT 'open'
+                        CHECK (status IN ('open', 'closed')),
     closed_at TEXT, -- carimbo do fechamento (Bloco 2; null enquanto aberta)
     created_at TEXT   NOT NULL
                       DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
@@ -124,18 +149,30 @@ const SCHEMA_SQL = `
   -- comanda. amount é o total da comanda em centavos, snapshot do momento
   -- do fechamento (soma de quantity * unit_price dos order_items). Um
   -- comanda tem no máximo um pagamento (índice único em order_id).
+  -- Bloco 3: employee_id/commission_bps/commission_amount são o snapshot
+  -- da comissão do garçom no fechamento (bps = basis points; 1000 = 10%).
+  -- Nulos quando a comanda não tem garçom (ou fechamento legado).
   CREATE TABLE IF NOT EXISTS "payments" (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id   INTEGER NOT NULL
-               REFERENCES "orders" (id)
-               ON UPDATE CASCADE
-               ON DELETE CASCADE,
-    method     TEXT    NOT NULL
-               CHECK (method IN ('dinheiro', 'cartao', 'pix')),
-    amount     INTEGER NOT NULL
-               CHECK (amount >= 0),
-    created_at TEXT    NOT NULL
-               DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id          INTEGER NOT NULL
+                      REFERENCES "orders" (id)
+                      ON UPDATE CASCADE
+                      ON DELETE CASCADE,
+    employee_id       INTEGER
+                      REFERENCES employees (id)
+                      ON UPDATE CASCADE
+                      ON DELETE SET NULL,
+    method            TEXT    NOT NULL
+                      CHECK (method IN ('dinheiro', 'cartao', 'pix')),
+    amount            INTEGER NOT NULL
+                      CHECK (amount >= 0),
+    commission_bps    INTEGER
+                      CHECK (commission_bps IS NULL
+                             OR (commission_bps >= 0 AND commission_bps <= 10000)),
+    commission_amount INTEGER
+                      CHECK (commission_amount IS NULL OR commission_amount >= 0),
+    created_at        TEXT    NOT NULL
+                      DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
   ) STRICT;
 
   CREATE INDEX IF NOT EXISTS idx_payments_order_id
@@ -176,6 +213,40 @@ function initialize() {
   // O índice da coluna migrada fica aqui (depois do ALTER TABLE) para
   // não falhar na ordem de criação em bancos pré-existentes.
   instance.exec('CREATE INDEX IF NOT EXISTS idx_orders_closed_at ON "orders" (closed_at);');
+
+  // Migração leve (Bloco 3): employee_id nas tabelas e comissão em payments.
+  // Idempotente: cada coluna só é adicionada quando ausente.
+  const hasColumn = (table, column) => instance
+    .prepare(`PRAGMA table_info("${table}")`)
+    .all()
+    .some((entry) => entry.name === column);
+
+  if (!hasColumn('tables', 'employee_id')) {
+    instance.exec(
+      'ALTER TABLE "tables" ADD COLUMN employee_id INTEGER REFERENCES employees (id);',
+    );
+  }
+  if (!hasColumn('orders', 'employee_id')) {
+    instance.exec(
+      'ALTER TABLE "orders" ADD COLUMN employee_id INTEGER REFERENCES employees (id);',
+    );
+  }
+  if (!hasColumn('payments', 'employee_id')) {
+    instance.exec(
+      'ALTER TABLE "payments" ADD COLUMN employee_id INTEGER REFERENCES employees (id);',
+    );
+  }
+  if (!hasColumn('payments', 'commission_bps')) {
+    instance.exec('ALTER TABLE "payments" ADD COLUMN commission_bps INTEGER;');
+  }
+  if (!hasColumn('payments', 'commission_amount')) {
+    instance.exec('ALTER TABLE "payments" ADD COLUMN commission_amount INTEGER;');
+  }
+
+  // Índices das colunas migradas (depois dos ALTER TABLE, mesma razão).
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_tables_employee_id ON "tables" (employee_id);');
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_orders_employee_id ON "orders" (employee_id);');
+  instance.exec('CREATE INDEX IF NOT EXISTS idx_payments_employee_id ON "payments" (employee_id);');
 
   // Categoria padrão para testes/uso inicial — id 1 é ignorado se já existir.
   instance

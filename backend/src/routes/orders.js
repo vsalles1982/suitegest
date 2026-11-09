@@ -115,7 +115,7 @@ function toItemView(row) {
 }
 
 /** Monta a representação da comanda com itens, total e derivados formatados. */
-function toOrderView(orderRow, rowsItems, paymentRow = null) {
+function toOrderView(orderRow, rowsItems, paymentRow = null, employeeName = null) {
   const items = rowsItems.map(toItemView);
   const total = items.reduce((sum, item) => sum + item.subtotal, 0);
 
@@ -127,8 +127,13 @@ function toOrderView(orderRow, rowsItems, paymentRow = null) {
     // Bloco 2: carimbo do fechamento (null enquanto a comanda segue aberta).
     closedAt: orderRow.closed_at ?? null,
     // Bloco 2 (contrato do QA): pagamento da comanda — objeto com method,
-    // methodLabel, amount e amountFormatted, ou null se não houver.
-    payment: paymentRow ? toPaymentView(paymentRow) : null,
+    // methodLabel, amount e amountFormatted, ou null se não houver. O nome
+    // do garçom (Bloco 3) é o mesmo da comanda e chega resolvido.
+    payment: paymentRow ? toPaymentView(paymentRow, employeeName) : null,
+    // Bloco 3: garçom que abriu a comanda (copiado da mesa na abertura).
+    // O nome vem resolvido pelo chamador (linha com JOIN na consulta).
+    employeeId: orderRow.employee_id ?? null,
+    employeeName: employeeName ?? null,
     items,
     total,
     totalFormatted: formatBRL(total),
@@ -136,7 +141,7 @@ function toOrderView(orderRow, rowsItems, paymentRow = null) {
 }
 
 /** Monta a representação do pagamento registrado no fechamento. */
-function toPaymentView(paymentRow) {
+function toPaymentView(paymentRow, employeeName = null) {
   return {
     id: paymentRow.id,
     orderId: paymentRow.order_id,
@@ -145,12 +150,27 @@ function toPaymentView(paymentRow) {
     amount: paymentRow.amount,
     amountFormatted: formatBRL(paymentRow.amount),
     createdAt: paymentRow.created_at,
+    // Bloco 3: comissão do garçom (snapshot no fechamento; null sem garçom).
+    employeeId: paymentRow.employee_id ?? null,
+    employeeName: employeeName ?? null,
+    commissionBps: paymentRow.commission_bps ?? null,
+    commissionAmount: paymentRow.commission_amount ?? null,
+    commissionAmountFormatted: paymentRow.commission_amount === null
+      ? null
+      : formatBRL(paymentRow.commission_amount),
   };
 }
 
 /** Linha do pagamento da comanda (ou undefined quando não pago). */
 function getOrderPayment(db, orderId) {
   return db.prepare('SELECT * FROM "payments" WHERE order_id = ?').get(orderId);
+}
+
+/** Nome atual do funcionário (null quando sem garçom ou inexistente). */
+function getEmployeeName(db, employeeId) {
+  if (!employeeId) return null;
+  const row = db.prepare('SELECT name FROM employees WHERE id = ?').get(employeeId);
+  return row ? row.name : null;
 }
 
 /** Linhas dos itens da comanda (com productName resolvido), ordenadas por id. */
@@ -221,9 +241,20 @@ async function orderRoutes(fastify) {
     try {
       db.exec('BEGIN IMMEDIATE');
 
+      // Bloco 3: re-lê a mesa dentro da transação para copiar o garçom
+      // atribuído no instante da abertura (a leitura pré-transação pode
+      // ter mudado por PUT /tables/:id/employee concorrente).
+      const tableNow = db.prepare('SELECT * FROM "tables" WHERE id = ?').get(tableId);
+      if (!tableNow || tableNow.status !== table.status) {
+        db.exec('ROLLBACK');
+        return reply.code(409).send({
+          error: `O estado da mesa ${tableId} mudou durante a abertura; tente novamente.`,
+        });
+      }
+
       const orderResult = db
-        .prepare('INSERT INTO "orders" (table_id) VALUES (?)')
-        .run(tableId);
+        .prepare('INSERT INTO "orders" (table_id, employee_id) VALUES (?, ?)')
+        .run(tableId, tableNow.employee_id ?? null);
       orderId = orderResult.lastInsertRowid;
 
       const insertItem = db.prepare(
@@ -254,8 +285,9 @@ async function orderRoutes(fastify) {
 
     const orderRow = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(orderId);
     const itemRows = getOrderItems(db, orderId);
+    const orderEmployeeName = getEmployeeName(db, orderRow.employee_id);
 
-    return reply.code(201).send(toOrderView(orderRow, itemRows));
+    return reply.code(201).send(toOrderView(orderRow, itemRows, null, orderEmployeeName));
   });
 
   /** Consulta a comanda com itens, subtotais, total e pagamento. */
@@ -271,9 +303,17 @@ async function orderRoutes(fastify) {
     }
 
     const itemRows = getOrderItems(db, id);
+    const paymentRow = getOrderPayment(db, id);
+    const orderEmployeeName = getEmployeeName(db, orderRow.employee_id);
+    const paymentEmployeeName = paymentRow ? getEmployeeName(db, paymentRow.employee_id) : null;
 
     return reply.code(200)
-      .send(toOrderView(orderRow, itemRows, getOrderPayment(db, id)));
+      .send(toOrderView(
+        orderRow,
+        itemRows,
+        paymentRow,
+        orderEmployeeName ?? paymentEmployeeName,
+      ));
   });
 
   /**
@@ -350,9 +390,34 @@ async function orderRoutes(fastify) {
             'SELECT COALESCE(SUM(quantity * unit_price), 0) AS total FROM "order_items" WHERE order_id = ?',
           )
           .get(id);
+
+        // Bloco 3: comissão do garçom (snapshot dos bps no fechamento).
+        // employee_id vem da comanda (quem abriu, copiado da mesa);
+        // sem garçom, as colunas de comissão ficam null. Arredondamento
+        // em inteiro (centavos * bps / 10000), metade para cima.
+        const orderInTx = db
+          .prepare('SELECT employee_id FROM "orders" WHERE id = ?')
+          .get(id);
+        const orderEmployeeId = orderInTx?.employee_id ?? null;
+        let employeeId = null;
+        let commissionBps = null;
+        let commissionAmount = null;
+        if (orderEmployeeId) {
+          const employee = db
+            .prepare('SELECT id, commission_bps FROM employees WHERE id = ?')
+            .get(orderEmployeeId);
+          if (employee) {
+            employeeId = employee.id;
+            commissionBps = employee.commission_bps;
+            commissionAmount = Math.round(total * commissionBps / 10000);
+          }
+        }
+
         const paymentResult = db
-          .prepare('INSERT INTO "payments" (order_id, method, amount) VALUES (?, ?, ?)')
-          .run(id, paymentMethod, total);
+          .prepare(
+            'INSERT INTO "payments" (order_id, employee_id, method, amount, commission_bps, commission_amount) VALUES (?, ?, ?, ?, ?, ?)',
+          )
+          .run(id, employeeId, paymentMethod, total, commissionBps, commissionAmount);
         payment = db
           .prepare('SELECT * FROM "payments" WHERE id = ?')
           .get(paymentResult.lastInsertRowid);
@@ -362,8 +427,11 @@ async function orderRoutes(fastify) {
 
       // Contrato do QA: a comanda sempre traz payment (null quando legado).
       const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+      const itemRows = getOrderItems(db, id);
+      const orderEmployeeName = getEmployeeName(db, updated.employee_id);
+      const paymentEmployeeName = payment ? getEmployeeName(db, payment.employee_id) : null;
       return reply.code(200)
-        .send(toOrderView(updated, getOrderItems(db, id), payment));
+        .send(toOrderView(updated, itemRows, payment, orderEmployeeName ?? paymentEmployeeName));
     } catch (error) {
       try {
         db.exec('ROLLBACK');
@@ -433,7 +501,8 @@ async function orderRoutes(fastify) {
     }
 
     const updated = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
-    return reply.code(201).send(toOrderView(updated, getOrderItems(db, id)));
+    const updatedName = getEmployeeName(db, updated.employee_id);
+    return reply.code(201).send(toOrderView(updated, getOrderItems(db, id), null, updatedName));
   });
 }
 

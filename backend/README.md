@@ -54,9 +54,13 @@ PORT=3001 HOST=127.0.0.1 npm start
 | DELETE | `/categories/:id`  | Exclui categoria (400 se houver produtos)        | `{ "status": "deleted", category }` (200)           |
 | GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, ... }`     |
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
-| GET    | `/tables`          | Lista mesas, ordenadas por número                | Array de `{ id, number, status }`                   |
+| GET    | `/tables`          | Lista mesas, com garçom atribuído                | Array de `{ id, number, status, employeeId, employeeName }` |
 | POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
 | PUT    | `/tables/:id/status` | Fecha (`closed`) ou libera (`free`) a mesa     | `{ id, number, status }` (200)                      |
+| PUT    | `/tables/:id/employee` | Atribui garçom (`{ "employeeId": 7 }`) ou remove (`null`) | Mesa (200)                              |
+| GET    | `/employees`       | Lista funcionários ordenados por nome              | Array de `{ id, name, commissionBps, active, createdAt }`  |
+| POST   | `/employees`       | Cadastra funcionário (`commissionBps` em bps)      | `{ id, name, commissionBps, active }` (201)         |
+| PUT    | `/employees/:id`   | Atualiza nome/comissão/atividade (parcial)         | Funcionário (200)                                   |
 | POST   | `/orders`          | Abre comanda para mesa, com itens iniciais       | Comanda com `items`, `total`, `totalFormatted` (201)|
 | GET    | `/orders/:id`      | Consulta comanda com itens, subtotais e total    | Comanda com `items`, `total`, `totalFormatted` (200)|
 | POST   | `/orders/:id/close`| Fecha a comanda; opc. registra pagamento          | Comanda `closed` (200), com `closedAt`; com corpo, também `payment` |
@@ -116,6 +120,34 @@ PORT=3001 HOST=127.0.0.1 npm start
 - Migração leve: bancos pré-existentes ganham a coluna `orders.closed_at`
   via `ALTER TABLE` idempotente na inicialização.
 
+### Gestão de Garçons (Bloco 3)
+
+*Desenho local: o `docs/backlog-garcons.md` não existe no repositório;
+contratos a seguir acertados com o fundador e documentados aqui.*
+
+- **Tabela `employees`**: `id`, `name` (único, case-insensitive),
+  `commission_bps` (basis points — **1000 = 10%**, faixa 0..10000),
+  `active` (0/1 boleano na API) e `created_at`. Sem DELETE: desativar via
+  `active: false` preserva o histórico.
+- **Atribuição de garçom**: `PUT /tables/:id/employee` com
+  `{ "employeeId": 7 }` (funcionário precisa existir — 404 — e estar
+  ativo — 400) ou `{ "employeeId": null }` para remover. A atribuição
+  sobrevive ao fechamento/liberação da mesa.
+- **Quem abriu a comanda**: `POST /orders` copia o `employee_id` da mesa
+  para a comanda **dentro da transação** (re-lê a mesa para não pegar
+  atribuição concorrente). Comanda expõe `employeeId` e `employeeName`.
+- **Comissão no fechamento** (`POST /orders/:id/close` com corpo):
+  `payments` ganhou as colunas snapshot `employee_id`, `commission_bps` e
+  `commission_amount` — `amount * bps / 10000`, arredondado para inteiro
+  (metade para cima). Inseridas na mesma transação do pagamento; sem
+  garçom (ou fechamento legado) ficam `null`. A resposta do pagamento
+  traz `employeeId`, `employeeName`, `commissionBps`,
+  `commissionAmount` e `commissionAmountFormatted`.
+- **Migração leve (idempotente na inicialização)**: colunas
+  `tables.employee_id`, `orders.employee_id`,
+  `payments.employee_id/commission_bps/commission_amount` via
+  `ALTER TABLE` sob `PRAGMA table_info`, com índices em `employee_id`.
+
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
 
@@ -166,9 +198,9 @@ npm test
 ```
 
 Os testes usam o banco real e limpam as tabelas de operação (`payments`,
-`order_items`, `orders`, `tables`, `products`) antes de cada teste (além de
-zerar os contadores de ID), para não haver conflito de IDs nem interferência
-entre testes. A categoria `Geral` (id 1) não é removida.
+`order_items`, `orders`, `tables`, `products`, `employees`) antes de cada
+teste (além de zerar os contadores de ID), para não haver conflito de IDs
+nem interferência entre testes. A categoria `Geral` (id 1) não é removida.
 
 ## Estrutura
 
@@ -183,7 +215,7 @@ backend/
     ├── database.js     # SQLite, schema e migração leve
     ├── money.js        # formatBRL (centavos -> moeda)
     ├── paymentMethods.js # métodos/rótulos de pagamento e fuso do negócio
-    └── routes/         # products, categories, tables, orders, reports
+    └── routes/         # products, categories, tables, orders, reports, employees
 ```
 
 ## Próximos passos (escopo do CHARTER)

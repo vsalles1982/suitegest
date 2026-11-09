@@ -412,6 +412,35 @@ section h2 {
   margin-bottom: 1rem;
 }
 
+/* Atribuição de garçom (mesas) e filtro do painel */
+.table-employee-field {
+  margin-top: 0.75rem;
+  flex: none;
+}
+
+.table-employee-field select,
+.panel-filter select {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  color: var(--text);
+  background-color: var(--background);
+}
+
+.table-employee-field select:focus,
+.panel-filter select:focus {
+  outline: 2px solid var(--header-background);
+  outline-offset: 1px;
+  border-color: var(--header-background);
+}
+
+.panel-filter {
+  margin-bottom: 1.5rem;
+  max-width: 420px;
+}
+
 .table-meta {
   margin: 0 0 0.375rem;
   font-weight: 600;

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Funcionários — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Funcionários</h1>
+      <p class="subtitle">Gestão de garçons, comissões e mesas atribuídas</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <section>
+      <h2>Adicionar Garçom</h2>
+      <form id="employee-form" class="product-form">
+        <div class="form-field">
+          <label for="name">Nome</label>
+          <input type="text" id="name" name="name" placeholder="Ex.: Ana" required />
+        </div>
+        <div class="form-field">
+          <label for="commission">Comissão (%)</label>
+          <input type="number" id="commission" name="commission" placeholder="Ex.: 10" min="0" step="0.01" required />
+        </div>
+        <div class="form-field form-actions">
+          <button type="submit" class="submit-button">Cadastrar Garçom</button>
+        </div>
+      </form>
+    </section>
+
+    <section aria-live="polite">
+      <h2>Funcionários</h2>
+      <p class="section-description">Lista de garçons carregada de <code>http://localhost:3000/employees</code>. Para ver as mesas de um garçom, acesse o <a href="meu-painel.html">Meu Painel</a>.</p>
+
+      <p id="employees-message" class="empty-state">Carregando funcionários…</p>
+
+      <div id="employees-table-wrapper" class="table-wrapper" hidden>
+        <table class="order-table">
+          <thead>
+            <tr>
+              <th scope="col">Nome</th>
+              <th scope="col">Comissão</th>
+              <th scope="col">Mesas Atribuídas</th>
+              <th scope="col">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="employees-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="funcionarios.js"></script>
+</body>
+</html>
