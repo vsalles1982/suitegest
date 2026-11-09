@@ -27,6 +27,9 @@
   var paymentForm = document.getElementById('payment-form');
   var paymentMethodSelect = document.getElementById('payment-method');
   var cancelPaymentButton = document.getElementById('cancel-payment');
+  var printReceiptButton = document.getElementById('print-receipt-button');
+
+  var lastOrder = null;
 
   var STATUS_LABELS = {
     open: 'Aberta',
@@ -94,7 +97,17 @@
     return getField(order, ['tableNumber', 'table_number', 'tableId', 'table_id', 'mesa']);
   }
 
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
   function renderOrder(order) {
+    lastOrder = order || null;
+
     while (itemsBody.firstChild) {
       itemsBody.removeChild(itemsBody.firstChild);
     }
@@ -107,6 +120,9 @@
     paymentEl.textContent = (order && order.payment && order.payment.methodLabel)
       ? 'Pago com ' + order.payment.methodLabel
       : '—';
+    if (printReceiptButton) {
+      printReceiptButton.hidden = !(order && order.payment);
+    }
 
     if (items.length === 0) {
       var emptyTotal = getField(order, ['total', 'totalFormatted']);
@@ -166,6 +182,10 @@
     totalEl.textContent = '—';
     totalCellEl.textContent = '—';
     paymentEl.textContent = '—';
+    lastOrder = null;
+    if (printReceiptButton) {
+      printReceiptButton.hidden = true;
+    }
   }
 
   function normalizeProducts(data) {
@@ -353,9 +373,13 @@
       })
         .then(function (response) {
           if (response.status === 200) {
-            closePaymentModal();
-            window.location.href = 'mesas.html';
-            return null;
+            return response.json().catch(function () { return null; }).then(function (data) {
+              closePaymentModal();
+              // Atualiza a tela com a comanda fechada (inclui payment) e
+              // exibe o botão "Imprimir Cupom" (ver renderOrder).
+              renderOrder(data && data.order ? data.order : data);
+              return null;
+            });
           }
           return response.json().catch(function () { return null; }).then(function (data) {
             alert((data && data.error) || ('Erro ao fechar comanda (HTTP ' + response.status + ').'));
@@ -415,6 +439,53 @@
         .catch(function () {
           alert('Erro ao adicionar item. Verifique se o backend está online.');
         });
+    });
+  }
+
+  function buildReceiptHtml(order) {
+    var items = getItems(order);
+    var lines = items.map(function (item) {
+      var quantity = toNumber(getField(item, ['quantity', 'quantidade', 'qty']));
+      var name = getField(item, ['productName', 'product_name', 'product', 'name', 'nome', 'produto']);
+      var subtotal = getField(item, ['subtotal']) === '—'
+        ? formatPrice(quantity * toNumber(getField(item, ['unitPrice', 'unit_price', 'precoUnitario', 'price'])))
+        : (item.subtotalFormatted || formatPrice(item.subtotal));
+      return '<tr><td>' + escapeHtml(name) + '</td><td>' + quantity + '</td><td>' + escapeHtml(subtotal) + '</td></tr>';
+    }).join('');
+
+    var paymentLabel = (order && order.payment)
+      ? (order.payment.methodLabel || order.payment.method || '')
+      : '';
+    var total = (order && order.totalFormatted) ? order.totalFormatted : formatPrice(order && order.total);
+
+    return '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8" />' +
+      '<title>Cupom — Comanda ' + escapeHtml(orderId) + '</title>' +
+      '<style>body{font-family:monospace;max-width:400px;margin:20px auto;color:#111}' +
+      'h1{font-size:18px;text-align:center}table{width:100%;border-collapse:collapse}' +
+      'td,th{padding:4px 0;text-align:left}th{border-bottom:1px solid #111}' +
+      '.total{font-weight:bold;text-align:right;margin-top:8px}' +
+      '.center{text-align:center}</style></head><body>' +
+      '<h1>SuiteSimulaFuncoes</h1>' +
+      '<p class="center">Cupom não fiscal</p>' +
+      '<p>Comanda: ' + escapeHtml(orderId) + ' &middot; Mesa: ' + escapeHtml(getTableNumber(order)) + '</p>' +
+      '<table><thead><tr><th>Produto</th><th>Qtd</th><th>Subtotal</th></tr></thead>' +
+      '<tbody>' + lines + '</tbody></table>' +
+      '<p class="total">Total: ' + escapeHtml(total) + '</p>' +
+      (paymentLabel ? '<p>Pagamento: ' + escapeHtml(paymentLabel) + '</p>' : '') +
+      '<p class="center">Obrigado pela preferência!</p>' +
+      '</body></html>';
+  }
+
+  if (printReceiptButton) {
+    printReceiptButton.addEventListener('click', function () {
+      var receiptWindow = window.open('', '_blank');
+      if (!receiptWindow) {
+        alert('Permita pop-ups para imprimir o cupom.');
+        return;
+      }
+      receiptWindow.document.write(buildReceiptHtml(lastOrder || {}));
+      receiptWindow.document.close();
+      receiptWindow.print();
     });
   }
 

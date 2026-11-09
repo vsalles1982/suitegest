@@ -342,6 +342,77 @@ async function orderRoutes(fastify) {
   });
 
   /**
+   * Bloco 5 — cupom para impressão: GET /orders/:id/receipt.
+   *
+   * Contrato (backend/README.md; o docs/backlog-dashboard.md cobre só o
+   * dashboard e não existe no repositório): itens com subtotais e total
+   * formatados, forma de pagamento (quando houver) com comissão do garçom
+   * snapshotada, closedAt (data/hora do fechamento) e printedAt (carimbo
+   * do pedido de impressão). Comanda ABERTA → 409 (cupom é comprovante
+   * de comanda fechada); comanda inexistente → 404; id inválido → 400.
+   * Fechamento legado (sem pagamento) devolve payment: null.
+   */
+  fastify.get('/orders/:id/receipt', async (request, reply) => {
+    const id = validateRouteId(reply, Number(request.params.id));
+    if (!id) return reply;
+
+    const db = getDatabase();
+
+    const orderRow = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+    if (!orderRow) {
+      return reply.code(404).send({ error: `Comanda ${id} não existe.` });
+    }
+    if (orderRow.status !== 'closed') {
+      return reply.code(409)
+        .send({ error: `A comanda ${id} está aberta; o cupom é impresso após o fechamento.` });
+    }
+
+    const paymentRow = getOrderPayment(db, id);
+    const itemRows = getOrderItems(db, id);
+    const items = itemRows.map((row) => {
+      const view = toItemView(row);
+      return {
+        productName: row.product_name,
+        quantity: view.quantity,
+        unitPrice: view.unitPrice,
+        unitPriceFormatted: view.unitPriceFormatted,
+        subtotal: view.subtotal,
+        subtotalFormatted: view.subtotalFormatted,
+      };
+    });
+    const total = items.reduce((sum, item) => sum + item.subtotal, 0);
+
+    let payment = null;
+    if (paymentRow) {
+      payment = {
+        method: paymentRow.method,
+        methodLabel: PAYMENT_METHOD_LABELS[paymentRow.method] ?? paymentRow.method,
+        amount: paymentRow.amount,
+        amountFormatted: formatBRL(paymentRow.amount),
+        // Bloco 3: comissão (snapshot do fechamento; null sem garçom).
+        employeeId: paymentRow.employee_id ?? null,
+        employeeName: getEmployeeName(db, paymentRow.employee_id),
+        commissionBps: paymentRow.commission_bps ?? null,
+        commissionAmount: paymentRow.commission_amount ?? null,
+        commissionAmountFormatted: paymentRow.commission_amount === null
+          ? null
+          : formatBRL(paymentRow.commission_amount),
+      };
+    }
+
+    return reply.code(200).send({
+      orderId: orderRow.id,
+      tableId: orderRow.table_id,
+      items,
+      total,
+      totalFormatted: formatBRL(total),
+      payment,
+      closedAt: orderRow.closed_at,
+      printedAt: nowIsoUtc(),
+    });
+  });
+
+  /**
    * Fecha uma comanda aberta (Fase 8 — docs/backlog-fase8.md, seção 5;
    * evolução do Bloco 2 — fechamento com pagamento).
    *

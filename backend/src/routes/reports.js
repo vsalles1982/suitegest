@@ -233,6 +233,30 @@ async function reportRoutes(fastify) {
       totalSold: payload.totalRevenue,
     });
   });
+
+  /**
+   * Bloco 5 — Dashboard: GET /reports/dashboard.
+   *
+   * Agregados "de todos os tempos" (base caixa = tabela payments) para os
+   * cards da tela inicial. Contrato documentado no backend/README.md (o
+   * docs/backlog-dashboard.md não existe no repositório): mesmos formatos
+   * do /reports/summary aprovado pelo QA no Bloco 2.1, com o campo extra
+   * closedOrders — TODAS as comandas fechadas (pagas ou não; para o card,
+   * conta volume de atendimento, enquanto ordersCount conta caixa).
+   */
+  fastify.get('/reports/dashboard', async (_request, reply) => {
+    const db = getDatabase();
+    const payload = buildSalesPayload(db, { from: null, to: null });
+
+    const { total: closedOrders } = db
+      .prepare("SELECT COUNT(*) AS total FROM \"orders\" WHERE status = 'closed'")
+      .get();
+
+    return reply.code(200).send({
+      ...payload,
+      closedOrders,
+    });
+  });
 }
 
 module.exports = reportRoutes;

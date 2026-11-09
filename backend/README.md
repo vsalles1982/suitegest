@@ -55,6 +55,8 @@ PORT=3001 HOST=127.0.0.1 npm start
 | GET    | `/products`        | Lista produtos do cardápio                       | Array de `{ id, name, price, categoryId, stock, minStock, ... }` |
 | PUT    | `/products/:id/stock` | Ajuste absoluto de estoque (`{ "stock": 12 }`, `{ "minStock": 5 }` opcional) | Produto (200) |
 | GET    | `/products/low-stock` | Produtos com `stock < minStock` (com `missing`) | Array de produto + `missing` (200)                |
+| GET    | `/reports/dashboard` | Cards do Dashboard (agregados de caixa)          | `{ ordersCount, closedOrders, total(+Formatted), averageTicket(+Formatted), topItems[], byMethod[], ... }` |
+| GET    | `/orders/:id/receipt` | Cupom para impressão da comanda fechada         | `{ orderId, items[], total(+Formatted), payment, closedAt, printedAt }` |
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
 | GET    | `/tables`          | Lista mesas, com garçom atribuído                | Array de `{ id, number, status, employeeId, employeeName }` |
 | POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
@@ -184,6 +186,43 @@ acertados com o fundador e documentados aqui.*
   ficou como possibilidade futura via flag — não implementada.
 - Venda da quantidade **exata** é permitida e pode zerar o estoque (stock 0
   não é negativo).
+
+### Dashboard e Cupom (Bloco 5)
+
+*O `docs/backlog-dashboard.md` não existe no repositório; contratos a seguir
+acertados com o fundador e documentados aqui.*
+
+- **`GET /reports/dashboard`** — agregados "de todos os tempos" para os
+  cards da tela inicial, com a **mesma base de caixa e formatos já
+  aprovados pelo QA no Bloco 2.1** (`/reports/summary`):
+  - `ordersCount` — comandas pagas (entra no caixa);
+  - `closedOrders` — **todas** as comandas fechadas, pagas ou não (card de
+    volume de atendimento; comanda fechada sem pagamento aparece aqui,
+    mas não no caixa);
+  - `total` / `totalFormatted` — total vendido (caixa);
+  - `averageTicket` / `averageTicketFormatted` — `round(total / ordersCount)`,
+    0 quando não há caixa (sem divisão por zero);
+  - `topItems[]` — mesmos campos do summary, com reconciliação garantida:
+    a soma dos totais do top (base PAGAS) = `total`;
+  - `byMethod[]` — `{ method, label, payments, total, totalFormatted }`,
+    ordenado por valor;
+  - legados preservados (`paidOrders`, `unpaidClosedOrders` etc.). Sem
+    parâmetros de período por ora — período pode ser adicionado aditivo.
+- **`GET /orders/:id/receipt`** — cupom para impressão da comanda:
+  - itens: `{ productName, quantity, unitPrice(+Formatted), subtotal(+Formatted) }`
+    na ordem de inserção; o **nome do produto é lido do cadastro atual**
+    (o snapshot de preço fica em `order_items`, mas o nome não — registrar
+    como decisão caso o gerente renomeie produtos retroativamente);
+  - `total` / `totalFormatted` derivados dos itens (reconcilia com o
+    `amount` do pagamento);
+  - `payment`: null no fechamento legado; com pagamento, traz `method`,
+    `methodLabel`, `amount(+Formatted)` e os campos de comissão do Bloco 3
+    (`employeeId`, `employeeName`, `commissionBps`, `commissionAmount`,
+    `commissionAmountFormatted` — snapshot do fechamento);
+  - `closedAt` (data/hora do fechamento, carimbo em UTC ISO-8601) e
+    `printedAt` (carimbo do momento da impressão);
+  - erros: comanda **aberta** → 409 (cupom é comprovante de comanda
+    fechada); inexistente → 404; id inválido → 400.
 
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
