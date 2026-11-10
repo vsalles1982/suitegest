@@ -199,10 +199,11 @@ acertados com o fundador e documentados aqui.*
 - **`GET /reports/dashboard`** — agregados "de todos os tempos" para os
   cards da tela inicial, com a **mesma base de caixa e formatos já
   aprovados pelo QA no Bloco 2.1** (`/reports/summary`):
-  - `ordersCount` — comandas pagas (entra no caixa);
-  - `closedOrders` — **todas** as comandas fechadas, pagas ou não (card de
-    volume de atendimento; comanda fechada sem pagamento aparece aqui,
-    mas não no caixa);
+  - `ordersCount` — comandas pagas (entra no caixa) — **alias legado do
+    Bloco 2.1**, preservado por compatibilidade;
+  - `closedOrders` — **todas** as comandas fechadas, pagas ou não (presente
+    no summary e no dashboard desde o Bloco 6, a pedido do QA; sem
+    pagamento, aparece aqui mas não no caixa);
   - `total` / `totalFormatted` — total vendido (caixa);
   - `averageTicket` / `averageTicketFormatted` — `round(total / ordersCount)`,
     0 quando não há caixa (sem divisão por zero);
@@ -223,6 +224,11 @@ acertados com o fundador e documentados aqui.*
     `methodLabel`, `amount(+Formatted)` e os campos de comissão do Bloco 3
     (`employeeId`, `employeeName`, `commissionBps`, `commissionAmount`,
     `commissionAmountFormatted` — snapshot do fechamento);
+  - `tableNumber` — número da mesa (JOIN na leitura; adicionado no Bloco 6
+    por pedido do QA, além de `tableId`);
+  - `company` — `{ name, address, phone }` da tabela `company_profile`
+    (linha única, semeadura `SUITEGEST`); **fallback** no código:
+    sem linha, `name` = `SUITEGEST` e demais campos null;
   - `closedAt` (data/hora do fechamento, carimbo em UTC ISO-8601) e
     `printedAt` (carimbo do momento da impressão);
   - erros: comanda **aberta** → 409 (cupom é comprovante de comanda

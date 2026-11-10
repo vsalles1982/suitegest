@@ -183,38 +183,55 @@
 
   function adjustStock(product) {
     var current = getStock(product);
-    var input = prompt(
-      'Informe a nova quantidade em estoque de ' + getField(product, ['name', 'nome']) +
-      (current === '—' ? ':' : ' (atual: ' + current + '):')
-    );
-    if (input === null) {
-      return;
-    }
+    var name = getField(product, ['name', 'nome']);
 
-    var stock = Number(input);
-    if (!Number.isInteger(stock) || stock < 0) {
-      alert('Quantidade inválida');
-      return;
-    }
-
-    fetch(PRODUCTS_URL + '/' + getField(product, ['id']) + '/stock', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stock: stock })
-    })
-      .then(function (response) {
-        if (response.status === 200) {
-          loadProducts();
-          return null;
+    openModal({
+      title: 'Ajustar estoque',
+      description: 'Informe a nova quantidade em estoque de ' + name +
+        (current === '—' ? '.' : ' (atual: ' + current + ').'),
+      fields: [
+        {
+          name: 'stock',
+          label: 'Nova quantidade em estoque',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: 1,
+          value: current === '—' ? 0 : current
         }
-        return response.json().catch(function () { return null; }).then(function (data) {
-          alert((data && data.error) || ('Erro ao ajustar estoque (HTTP ' + response.status + ').'));
-          return null;
-        });
+      ],
+      submitLabel: 'Ajustar estoque'
+    }).then(function (values) {
+      if (!values) {
+        return;
+      }
+
+      var stock = Number(values.stock);
+      if (!Number.isInteger(stock) || stock < 0) {
+        showToast('Informe um valor inteiro maior ou igual a zero.', 'error');
+        return;
+      }
+
+      fetch(PRODUCTS_URL + '/' + getField(product, ['id']) + '/stock', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: stock })
       })
-      .catch(function () {
-        alert('Erro ao ajustar estoque. Verifique se o backend está online.');
-      });
+        .then(function (response) {
+          if (response.status === 200) {
+            showToast('Estoque ajustado', 'success');
+            loadProducts();
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            showToast((data && data.error) || ('Erro ao ajustar estoque (HTTP ' + response.status + ').'), 'error');
+            return null;
+          });
+        })
+        .catch(function () {
+          showToast('Erro ao ajustar estoque. Verifique se o backend está online.', 'error');
+        });
+    });
   }
 
   function renderProducts(products) {
@@ -319,6 +336,7 @@
         .then(function (response) {
           if (response.status === 201) {
             form.reset();
+            showToast('Produto cadastrado', 'success');
             loadProducts();
             return null;
           }
@@ -327,7 +345,7 @@
           });
         })
         .catch(function (error) {
-          alert(error.message || 'Erro ao cadastrar produto. Verifique se o backend está online.');
+          showToast(error.message || 'Erro ao cadastrar produto. Verifique se o backend está online.', 'error');
         });
     });
   }

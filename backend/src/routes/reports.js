@@ -202,10 +202,25 @@ function buildSalesPayload(db, period) {
   const report = buildSalesReport(db, period);
   const bounds = periodToUtcBounds(period);
 
+  // Bloco 6/pedidos do QA: closedOrders = TODAS as comandas fechadas no
+  // período (pagas ou não — inclui `unpaidClosedOrders`); o alias legado
+  // ordersCount continua = comandas PAGAS (base de caixa) para não quebrar
+  // o contrato aprovado no Bloco 2.1. Semânticas distintas e documentadas
+  // no backend/README.md.
+  const closedClauses = bounds.map((bound) => [`o.closed_at ${bound.op} ?`, bound.value]);
+  const closedWhere = [
+    "o.status = 'closed'",
+    ...closedClauses.map(([clause]) => clause),
+  ].join(' AND ');
+  const { total: closedOrders } = db
+    .prepare(`SELECT COUNT(*) AS total FROM "orders" o WHERE ${closedWhere}`)
+    .get(...closedClauses.map(([, value]) => value));
+
   return {
     ...report,
     // Aliases do contrato do QA (campos legados preservados).
     ordersCount: report.paidOrders,
+    closedOrders,
     total: report.totalRevenue,
     totalFormatted: report.totalRevenueFormatted,
     topItems: buildTopItems(db, bounds),
@@ -245,17 +260,10 @@ async function reportRoutes(fastify) {
    * conta volume de atendimento, enquanto ordersCount conta caixa).
    */
   fastify.get('/reports/dashboard', async (_request, reply) => {
-    const db = getDatabase();
-    const payload = buildSalesPayload(db, { from: null, to: null });
+    // closedOrders já vem de buildSalesPayload (Bloco 6 — mesma semântica).
+    const payload = buildSalesPayload(getDatabase(), { from: null, to: null });
 
-    const { total: closedOrders } = db
-      .prepare("SELECT COUNT(*) AS total FROM \"orders\" WHERE status = 'closed'")
-      .get();
-
-    return reply.code(200).send({
-      ...payload,
-      closedOrders,
-    });
+    return reply.code(200).send(payload);
   });
 }
 

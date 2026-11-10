@@ -109,24 +109,45 @@
   }
 
   function adjustStockPrompt(product) {
-    var input = prompt(
-      'Informe a nova quantidade em estoque de ' + getField(product, ['name', 'nome']) + ':'
-    );
-    if (input === null) {
-      return;
-    }
+    var current = getStock(product);
+    var name = getField(product, ['name', 'nome']);
 
-    var stock = Number(input);
-    if (!Number.isInteger(stock) || stock < 0) {
-      alert('Quantidade inválida');
-      return;
-    }
+    openModal({
+      title: 'Ajustar estoque',
+      description: 'Informe a nova quantidade em estoque de ' + name +
+        (current === '—' ? '.' : ' (atual: ' + current + ').'),
+      fields: [
+        {
+          name: 'stock',
+          label: 'Nova quantidade em estoque',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: 1,
+          value: current === '—' ? 0 : current
+        }
+      ],
+      submitLabel: 'Ajustar estoque'
+    }).then(function (values) {
+      if (!values) {
+        return;
+      }
 
-    adjustStock(getField(product, ['id']), stock)
-      .then(loadProducts)
-      .catch(function (error) {
-        alert(error.message || 'Erro ao ajustar estoque. Verifique se o backend está online.');
-      });
+      var stock = Number(values.stock);
+      if (!Number.isInteger(stock) || stock < 0) {
+        showToast('Informe um valor inteiro maior ou igual a zero.', 'error');
+        return;
+      }
+
+      adjustStock(getField(product, ['id']), stock)
+        .then(function () {
+          showToast('Estoque ajustado', 'success');
+          loadProducts();
+        })
+        .catch(function (error) {
+          showToast(error.message || 'Erro ao ajustar estoque. Verifique se o backend está online.', 'error');
+        });
+    });
   }
 
   function renderProducts(products) {
@@ -219,17 +240,18 @@
       var stock = Number(document.getElementById('stock').value);
 
       if (!Number.isInteger(stock) || stock < 0) {
-        alert('Quantidade inválida');
+        showToast('Quantidade inválida', 'error');
         return;
       }
 
       adjustStock(productId, stock)
         .then(function () {
           form.reset();
+          showToast('Estoque ajustado', 'success');
           loadProducts();
         })
         .catch(function (error) {
-          alert(error.message || 'Erro ao ajustar estoque. Verifique se o backend está online.');
+          showToast(error.message || 'Erro ao ajustar estoque. Verifique se o backend está online.', 'error');
         });
     });
   }

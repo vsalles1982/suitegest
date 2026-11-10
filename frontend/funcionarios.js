@@ -76,62 +76,92 @@
   }
 
   function deleteEmployee(employee) {
-    if (!confirm('Desativar o funcionário ' + getField(employee, ['name', 'nome']) + '?')) {
-      return;
-    }
+    confirmToast('Desativar o funcionário ' + getField(employee, ['name', 'nome']) + '?').then(function (confirmed) {
+      if (!confirmed) {
+        return;
+      }
 
-    fetch(EMPLOYEES_URL + '/' + getField(employee, ['id']), {
-      method: 'DELETE'
-    })
-      .then(function (response) {
-        if (response.status === 200 || response.status === 204) {
-          loadEmployees();
-          return null;
-        }
-        return response.json().catch(function () { return null; }).then(function (data) {
-          alert((data && data.error) || ('Erro ao excluir funcionário (HTTP ' + response.status + ').'));
-          return null;
-        });
+      fetch(EMPLOYEES_URL + '/' + getField(employee, ['id']), {
+        method: 'DELETE'
       })
-      .catch(function () {
-        alert('Erro ao excluir funcionário. Verifique se o backend está online.');
-      });
+        .then(function (response) {
+          if (response.status === 200 || response.status === 204) {
+            showToast('Funcionário desativado', 'success');
+            loadEmployees();
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            showToast((data && data.error) || ('Erro ao excluir funcionário (HTTP ' + response.status + ').'), 'error');
+            return null;
+          });
+        })
+        .catch(function () {
+          showToast('Erro ao excluir funcionário. Verifique se o backend está online.', 'error');
+        });
+    });
   }
 
   function editEmployee(employee) {
-    var name = prompt('Informe o nome do funcionário:', getField(employee, ['name', 'nome']) === '—' ? '' : getField(employee, ['name', 'nome']));
-    if (name === null) {
-      return;
-    }
-    var commissionInput = prompt('Informe a comissão (%) do funcionário:');
-    if (commissionInput === null) {
-      return;
+    var currentName = getField(employee, ['name', 'nome']);
+    var currentCommission = getField(employee, ['commission', 'comissao']);
+    if (currentCommission === '—') {
+      var bps = getField(employee, ['commissionBps', 'commission_bps']);
+      currentCommission = bps === '—' ? 0 : Number(bps) / 100;
     }
 
-    var commission = Number(commissionInput);
-
-    fetch(EMPLOYEES_URL + '/' + getField(employee, ['id']), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: name.trim(),
-        commission: commission,
-        commissionBps: Math.round(commission * 100)
-      })
-    })
-      .then(function (response) {
-        if (response.status === 200) {
-          loadEmployees();
-          return null;
+    openModal({
+      title: 'Editar garçom',
+      description: 'Atualize o nome e a comissão do garçom.',
+      fields: [
+        {
+          name: 'name',
+          label: 'Nome',
+          type: 'text',
+          required: true,
+          value: currentName === '—' ? '' : currentName
+        },
+        {
+          name: 'commission',
+          label: 'Comissão (%)',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: 0.01,
+          value: currentCommission
         }
-        return response.json().catch(function () { return null; }).then(function (data) {
-          alert((data && data.error) || ('Erro ao editar funcionário (HTTP ' + response.status + ').'));
-          return null;
-        });
+      ],
+      submitLabel: 'Salvar garçom'
+    }).then(function (values) {
+      if (!values) {
+        return;
+      }
+
+      var commission = Number(values.commission);
+
+      fetch(EMPLOYEES_URL + '/' + getField(employee, ['id']), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: String(values.name).trim(),
+          commission: commission,
+          commissionBps: Math.round(commission * 100)
+        })
       })
-      .catch(function () {
-        alert('Erro ao editar funcionário. Verifique se o backend está online.');
-      });
+        .then(function (response) {
+          if (response.status === 200) {
+            showToast('Funcionário atualizado', 'success');
+            loadEmployees();
+            return null;
+          }
+          return response.json().catch(function () { return null; }).then(function (data) {
+            showToast((data && data.error) || ('Erro ao editar funcionário (HTTP ' + response.status + ').'), 'error');
+            return null;
+          });
+        })
+        .catch(function () {
+          showToast('Erro ao editar funcionário. Verifique se o backend está online.', 'error');
+        });
+    });
   }
 
   function renderEmployees(employees) {
@@ -229,16 +259,17 @@
         .then(function (response) {
           if (response.status === 201 || response.status === 200) {
             form.reset();
+            showToast('Garçom cadastrado', 'success');
             loadEmployees();
             return null;
           }
           return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao cadastrar funcionário (HTTP ' + response.status + ').'));
+            showToast((data && data.error) || ('Erro ao cadastrar funcionário (HTTP ' + response.status + ').'), 'error');
             return null;
           });
         })
         .catch(function () {
-          alert('Erro ao cadastrar funcionário. Verifique se o backend está online.');
+          showToast('Erro ao cadastrar funcionário. Verifique se o backend está online.', 'error');
         });
     });
   }

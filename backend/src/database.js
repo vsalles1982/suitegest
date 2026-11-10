@@ -104,6 +104,18 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_cash_transactions_shift
     ON cash_transactions (shift_id);
 
+  -- Bloco 6 (pendência do QA): dados do estabelecimento impressos no
+  -- cupom. Uma linha (id 1, semeadura abaixo); editar sob demanda.
+  CREATE TABLE IF NOT EXISTS company_profile (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    name   TEXT NOT NULL,
+    address TEXT,
+    phone  TEXT
+  ) STRICT;
+
+  -- fallback do cupom: sem cadastro do estabelecimento, o nome é
+  -- "SUITEGEST" (semeado aqui e editável sob demanda).  INSERT OR IGNORE INTO company_profile (id, name) VALUES (1, 'SUITEGEST');
+
   -- Bloco 3 (Gestão de Garçons): funcionários e atribuição às mesas.
   -- commission_bps é a comissão em basis points (1000 = 10%; 10000 = 100%).
   -- active = 0 desliga o funcionário sem apagar histórico.

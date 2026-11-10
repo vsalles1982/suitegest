@@ -172,6 +172,13 @@ test('GET /orders/:id/receipt devolve cupom completo com pagamento e comissão',
   const receipt = response.json();
   assert.strictEqual(receipt.orderId, order.id);
   assert.strictEqual(receipt.tableId, table.id);
+  // Bloco 6 (QA): número da mesa no cupom.
+  assert.strictEqual(receipt.tableNumber, 64);
+
+  // Bloco 6 (QA): identificação do estabelecimento (fallback semeadura).
+  assert.strictEqual(receipt.company.name, 'SUITEGEST');
+  assert.strictEqual(receipt.company.address, null);
+  assert.strictEqual(receipt.company.phone, null);
 
   // Itens formatados para impressão.
   assert.strictEqual(receipt.items.length, 1);
@@ -229,6 +236,35 @@ test('GET /orders/:id/receipt: comanda aberta 409, inexistente 404, id ruim 400 
 
   const invalid = await app.inject({ method: 'GET', url: '/orders/abc/receipt' });
   assert.strictEqual(invalid.statusCode, 400);
+
+  await app.close();
+});
+
+test('Fallback do cupom: sem linha em company_profile o nome é "SUITEGEST"; summary usa closedOrders', async () => {
+  clearAll();
+  const suco = seedProduct('Suco Fallback', 500);
+
+  const app = await createApp({ logger: false });
+  const table = seedTable(73);
+
+  const order = await openOrder(app, table.id, [{ productId: suco, quantity: 1 }]);
+  await closeOrder(app, order.id, 'pix');
+
+  // Sem linha em company_profile → fallback do código (não quebra).
+  getDatabase().prepare('DELETE FROM company_profile').run();
+  const receipt = (await app.inject({ method: 'GET', url: `/orders/${order.id}/receipt` })).json();
+  assert.strictEqual(receipt.company.name, 'SUITEGEST');
+  assert.strictEqual(receipt.company.address, null);
+  assert.strictEqual(receipt.company.phone, null);
+
+  // QA: ordersCount passa a ter closedOrders como alias no summary —
+  // ordersCount (legado) = comandas PAGAS; closedOrders = TODAS fechadas.
+  const summary = (await app.inject({ method: 'GET', url: '/reports/summary' })).json();
+  assert.strictEqual(summary.ordersCount, 1); // paga
+  assert.strictEqual(summary.closedOrders, 1); // fechadas (pagas ou legado)
+
+  const dashboard = (await app.inject({ method: 'GET', url: '/reports/dashboard' })).json();
+  assert.strictEqual(dashboard.closedOrders, 1);
 
   await app.close();
 });

@@ -160,39 +160,64 @@
   }
 
   function addMovement(type) {
-    var amountInput = prompt('Informe o valor da ' + (type === 'sangria' ? 'sangria' : 'suprimento') + ' (em centavos):');
-    if (amountInput === null) {
-      return;
-    }
-    var description = prompt('Informe a descrição da ' + (type === 'sangria' ? 'sangria' : 'suprimento') + ':');
-    if (description === null) {
-      return;
-    }
+    var label = type === 'sangria' ? 'sangria' : 'suprimento';
+    var actionLabel = type === 'sangria' ? 'Registrar sangria' : 'Registrar suprimento';
 
-    var amount = Number(amountInput);
-    if (!Number.isInteger(amount) || amount < 0) {
-      alert('Quantidade inválida');
-      return;
-    }
+    openModal({
+      title: actionLabel,
+      description: type === 'sangria'
+        ? 'Informe o valor retirado da gaveta e o motivo da sangria.'
+        : 'Informe o valor depositado na gaveta e o motivo do suprimento.',
+      fields: [
+        {
+          name: 'amount',
+          label: 'Valor (em centavos)',
+          type: 'number',
+          required: true,
+          min: 0,
+          step: 1,
+          placeholder: 'Ex.: 3000'
+        },
+        {
+          name: 'description',
+          label: 'Motivo',
+          type: 'text',
+          required: true,
+          placeholder: type === 'sangria' ? 'Ex.: Retirada para troco' : 'Ex.: Reforço de caixa'
+        }
+      ],
+      submitLabel: actionLabel
+    }).then(function (values) {
+      if (!values) {
+        return;
+      }
 
-    fetch(CASH_URL + '/movements', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: type, amount: amount, description: description.trim() })
-    })
+      var amount = Number(values.amount);
+      if (!Number.isInteger(amount) || amount < 0) {
+        showToast('Informe um valor inteiro maior ou igual a zero.', 'error');
+        return;
+      }
+
+      fetch(CASH_URL + '/movements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: type, amount: amount, description: String(values.description).trim() })
+      })
       .then(function (response) {
         if (response.status === 200 || response.status === 201) {
+          showToast((type === 'sangria' ? 'Sangria' : 'Suprimento') + ' registrado', 'success');
           loadCash();
           return null;
         }
         return response.json().catch(function () { return null; }).then(function (data) {
-          alert((data && data.error) || ('Erro ao registrar movimentação (HTTP ' + response.status + ').'));
+          showToast((data && data.error) || ('Erro ao registrar movimentação (HTTP ' + response.status + ').'), 'error');
           return null;
         });
       })
       .catch(function () {
-        alert('Erro ao registrar movimentação. Verifique se o backend está online.');
+        showToast('Erro ao registrar movimentação. Verifique se o backend está online.', 'error');
       });
+    });
   }
 
   if (openForm) {
@@ -201,7 +226,7 @@
 
       var initialAmount = Number(document.getElementById('initial-amount').value);
       if (!Number.isInteger(initialAmount) || initialAmount < 0) {
-        alert('Quantidade inválida');
+        showToast('Quantidade inválida', 'error');
         return;
       }
 
@@ -213,16 +238,17 @@
         .then(function (response) {
           if (response.status === 200 || response.status === 201) {
             openForm.reset();
+            showToast('Caixa aberto', 'success');
             loadCash();
             return null;
           }
           return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao abrir caixa (HTTP ' + response.status + ').'));
+            showToast((data && data.error) || ('Erro ao abrir caixa (HTTP ' + response.status + ').'), 'error');
             return null;
           });
         })
         .catch(function () {
-          alert('Erro ao abrir caixa. Verifique se o backend está online.');
+          showToast('Erro ao abrir caixa. Verifique se o backend está online.', 'error');
         });
     });
   }
@@ -241,35 +267,52 @@
 
   if (closeCashButton) {
     closeCashButton.addEventListener('click', function () {
-      var input = prompt('Informe o valor contado na gaveta (em centavos):');
-      if (input === null) {
-        return;
-      }
-
-      var countedAmount = Number(input);
-      if (!Number.isInteger(countedAmount) || countedAmount < 0) {
-        alert('Quantidade inválida');
-        return;
-      }
-
-      fetch(CASH_URL + '/close', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ countedAmount: countedAmount })
-      })
-        .then(function (response) {
-          if (response.status === 200 || response.status === 201) {
-            loadCash();
-            return null;
+      openModal({
+        title: 'Fechar caixa',
+        description: 'Informe o valor contado na gaveta para fechar o turno.',
+        fields: [
+          {
+            name: 'countedAmount',
+            label: 'Valor contado na gaveta (em centavos)',
+            type: 'number',
+            required: true,
+            min: 0,
+            step: 1,
+            placeholder: 'Ex.: 15000'
           }
-          return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao fechar caixa (HTTP ' + response.status + ').'));
-            return null;
-          });
+        ],
+        submitLabel: 'Fechar caixa'
+      }).then(function (values) {
+        if (!values) {
+          return;
+        }
+
+        var countedAmount = Number(values.countedAmount);
+        if (!Number.isInteger(countedAmount) || countedAmount < 0) {
+          showToast('Informe um valor inteiro maior ou igual a zero.', 'error');
+          return;
+        }
+
+        fetch(CASH_URL + '/close', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ countedAmount: countedAmount })
         })
-        .catch(function () {
-          alert('Erro ao fechar caixa. Verifique se o backend está online.');
-        });
+          .then(function (response) {
+            if (response.status === 200 || response.status === 201) {
+              showToast('Caixa fechado', 'success');
+              loadCash();
+              return null;
+            }
+            return response.json().catch(function () { return null; }).then(function (data) {
+              showToast((data && data.error) || ('Erro ao fechar caixa (HTTP ' + response.status + ').'), 'error');
+              return null;
+            });
+          })
+          .catch(function () {
+            showToast('Erro ao fechar caixa. Verifique se o backend está online.', 'error');
+          });
+      });
     });
   }
 

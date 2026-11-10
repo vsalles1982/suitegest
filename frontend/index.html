@@ -3,14 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SuiteSimulaFuncoes — Gestão de Restaurantes</title>
+  <title>SUITEGEST — PDV para restaurantes</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="theme.css" />
 </head>
-<body>
+<body data-page="home">
+  <aside class="sidebar" aria-label="Menu principal">
+    <div class="sidebar-brand">
+      <span class="sidebar-logo" aria-hidden="true">SG</span>
+      <span class="sidebar-brand-text">
+        <strong>SUITEGEST</strong>
+        <span>PDV para restaurantes</span>
+      </span>
+    </div>
+    <nav class="sidebar-nav">
+        <a class="sidebar-link is-active" href="index.html" aria-current="page">
+          <span class="sidebar-link-icon" aria-hidden="true">⌂</span>
+          <span>Início</span>
+        </a>
+      <p class="sidebar-section-title">Operação</p>
+        <a class="sidebar-link" href="mesas.html">
+          <span class="sidebar-link-icon" aria-hidden="true">▦</span>
+          <span>Mesas</span>
+        </a>
+        <a class="sidebar-link" href="cardapio.html">
+          <span class="sidebar-link-icon" aria-hidden="true">☰</span>
+          <span>Cardápio</span>
+        </a>
+        <a class="sidebar-link" href="caixa.html">
+          <span class="sidebar-link-icon" aria-hidden="true">₿</span>
+          <span>Caixa</span>
+        </a>
+      <p class="sidebar-section-title">Gestão</p>
+        <a class="sidebar-link" href="dashboard.html">
+          <span class="sidebar-link-icon" aria-hidden="true">◱</span>
+          <span>Dashboard</span>
+        </a>
+        <a class="sidebar-link" href="relatorios.html">
+          <span class="sidebar-link-icon" aria-hidden="true">▤</span>
+          <span>Relatórios</span>
+        </a>
+        <a class="sidebar-link" href="estoque.html">
+          <span class="sidebar-link-icon" aria-hidden="true">◫</span>
+          <span>Estoque</span>
+        </a>
+        <a class="sidebar-link" href="funcionarios.html">
+          <span class="sidebar-link-icon" aria-hidden="true">☺</span>
+          <span>Funcionários</span>
+        </a>
+        <a class="sidebar-link" href="meu-painel.html">
+          <span class="sidebar-link-icon" aria-hidden="true">◉</span>
+          <span>Meu painel</span>
+        </a>
+    </nav>
+    <p class="sidebar-footer">Gestão não fiscal de estabelecimentos.</p>
+  </aside>
+
+  <button type="button" class="sidebar-toggle" aria-label="Abrir menu">☰</button>
   <header class="app-header">
     <div class="container">
-      <h1>SuiteSimulaFuncoes</h1>
-      <p class="subtitle">Sistema de gestão não fiscal para restaurantes, pizzarias e lanchonetes</p>
+      <h1>SUITEGEST</h1>
+      <p class="subtitle">PDV para restaurantes — gestão não fiscal de restaurantes, pizzarias e lanchonetes</p>
     </div>
   </header>
 
@@ -70,9 +123,15 @@
 
   <footer class="app-footer">
     <div class="container">
-      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+      <p>SUITEGEST — Gestão não fiscal de estabelecimentos de alimentação.</p>
     </div>
   </footer>
+
+  <script src="theme.js"></script>
+
+  <script src="toast.js"></script>
+
+  <script src="modal.js"></script>
 
   <script src="app.js"></script>
 </body>

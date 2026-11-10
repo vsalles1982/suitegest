@@ -5,6 +5,8 @@
 
   var TABLES_URL = 'http://localhost:3000/tables';
   var EMPLOYEES_URL = 'http://localhost:3000/employees';
+  var PRODUCTS_URL = 'http://localhost:3000/products';
+  var ORDERS_URL = 'http://localhost:3000/orders';
 
   var grid = document.getElementById('tables-grid');
   var message = document.getElementById('tables-message');
@@ -82,16 +84,17 @@
     })
       .then(function (response) {
         if (response.status === 200) {
+          showToast('Garçom atribuído à mesa', 'success');
           loadTables();
           return null;
         }
         return response.json().catch(function () { return null; }).then(function (data) {
-          alert((data && data.error) || ('Erro ao atribuir garçom (HTTP ' + response.status + ').'));
+          showToast((data && data.error) || ('Erro ao atribuir garçom (HTTP ' + response.status + ').'), 'error');
           return null;
         });
       })
       .catch(function () {
-        alert('Erro ao atribuir garçom. Verifique se o backend está online.');
+        showToast('Erro ao atribuir garçom. Verifique se o backend está online.', 'error');
       });
   }
 
@@ -157,6 +160,98 @@
       });
   }
 
+  function loadProductsForSelect() {
+    return fetch(PRODUCTS_URL)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Resposta HTTP ' + response.status);
+        }
+        return response.json();
+      })
+      .then(function (data) {
+        return normalizeList(data);
+      });
+  }
+
+  function openOrderModal(table) {
+    var tableNumber = getField(table, ['number', 'numero', 'id']);
+    var tableId = getField(table, ['id']);
+
+    loadProductsForSelect()
+      .then(function (products) {
+        if (products.length === 0) {
+          showToast('Nenhum produto cadastrado. Cadastre um produto antes de abrir a comanda.', 'error');
+          return null;
+        }
+
+        var options = products.map(function (product) {
+          return {
+            value: String(getField(product, ['id'])),
+            label: getField(product, ['name', 'nome'])
+          };
+        });
+
+        return openModal({
+          title: 'Abrir comanda da Mesa ' + tableNumber,
+          description: 'Escolha o produto e a quantidade para iniciar o atendimento.',
+          fields: [
+            {
+              name: 'productId',
+              label: 'Produto',
+              type: 'select',
+              required: true,
+              options: options
+            },
+            {
+              name: 'quantity',
+              label: 'Quantidade',
+              type: 'number',
+              required: true,
+              min: 1,
+              step: 1,
+              value: 1
+            }
+          ],
+          submitLabel: 'Abrir comanda'
+        }).then(function (values) {
+          if (!values) {
+            return null;
+          }
+
+          return fetch(ORDERS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tableId: Number(tableId),
+              items: [{ productId: Number(values.productId), quantity: Number(values.quantity) }]
+            })
+          })
+            .then(function (response) {
+              if (response.status === 201) {
+                return response.json();
+              }
+              return response.json().catch(function () { return null; }).then(function (data) {
+                showToast((data && data.error) || ('Erro ao abrir comanda (HTTP ' + response.status + ').'), 'error');
+                return null;
+              });
+            })
+            .then(function (order) {
+              if (order && order.id) {
+                window.location.href = 'comanda.html?id=' + order.id;
+              } else {
+                loadTables();
+              }
+            })
+            .catch(function () {
+              showToast('Erro ao abrir comanda. Verifique se o backend está online.', 'error');
+            });
+        });
+      })
+      .catch(function () {
+        showToast('Erro ao carregar produtos. Verifique se o backend está online.', 'error');
+      });
+  }
+
   function renderTables(tables) {
     while (grid.firstChild) {
       grid.removeChild(grid.firstChild);
@@ -183,9 +278,8 @@
         if (status === 'occupied' || status === 'ocupada') {
           window.location.href = 'comanda.html?id=' + getField(table, ['id']);
         } else if (status === 'free' || status === 'livre') {
-          // Mesa livre: pedir o item a adicionar (a abertura da comanda
-          // via POST /orders entra em etapa posterior da Fase 7).
-          prompt('Informe o item a adicionar à Mesa ' + getField(table, ['number', 'numero', 'id']) + ':');
+          // Mesa livre: abrir a comanda escolhendo produto e quantidade.
+          openOrderModal(table);
         }
       });
 
@@ -232,16 +326,17 @@
           })
             .then(function (response) {
               if (response.status === 200) {
+                showToast('Mesa liberada', 'success');
                 loadTables();
                 return null;
               }
               return response.json().catch(function () { return null; }).then(function (data) {
-                alert((data && data.error) || ('Erro ao liberar mesa (HTTP ' + response.status + ').'));
+                showToast((data && data.error) || ('Erro ao liberar mesa (HTTP ' + response.status + ').'), 'error');
                 return null;
               });
             })
             .catch(function () {
-              alert('Erro ao liberar mesa. Verifique se o backend está online.');
+              showToast('Erro ao liberar mesa. Verifique se o backend está online.', 'error');
             });
         });
         card.appendChild(releaseButton);
@@ -274,39 +369,60 @@
 
   if (addButton) {
     addButton.addEventListener('click', function () {
-      var input = prompt('Informe o número da mesa:');
-      if (input === null) {
-        return;
-      }
+      openModal({
+        title: 'Adicionar mesa',
+        description: 'Informe o número da mesa. Cada mesa tem um número único.',
+        fields: [
+          {
+            name: 'number',
+            label: 'Número da mesa',
+            type: 'number',
+            required: true,
+            min: 1,
+            step: 1,
+            placeholder: 'Ex.: 12'
+          }
+        ],
+        submitLabel: 'Cadastrar mesa'
+      }).then(function (values) {
+        if (!values) {
+          return;
+        }
 
-      var number = Number(input);
+        var number = Number(values.number);
+        if (!Number.isInteger(number) || number < 1) {
+          showToast('Informe um número inteiro maior ou igual a 1.', 'error');
+          return;
+        }
 
-      fetch(TABLES_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: number })
-      })
-        .then(function (response) {
-          if (response.status === 201) {
-            loadTables();
-            return null;
-          }
-          if (response.status === 409) {
-            alert('Mesa já cadastrada');
-            return null;
-          }
-          if (response.status === 400) {
-            alert('Número inválido');
-            return null;
-          }
-          return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao cadastrar mesa (HTTP ' + response.status + ').'));
-            return null;
-          });
+        fetch(TABLES_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ number: number })
         })
-        .catch(function () {
-          alert('Erro ao cadastrar mesa. Verifique se o backend está online.');
-        });
+          .then(function (response) {
+            if (response.status === 201) {
+              showToast('Mesa cadastrada', 'success');
+              loadTables();
+              return null;
+            }
+            if (response.status === 409) {
+              showToast('Mesa já cadastrada', 'error');
+              return null;
+            }
+            if (response.status === 400) {
+              showToast('Número inválido', 'error');
+              return null;
+            }
+            return response.json().catch(function () { return null; }).then(function (data) {
+              showToast((data && data.error) || ('Erro ao cadastrar mesa (HTTP ' + response.status + ').'), 'error');
+              return null;
+            });
+          })
+          .catch(function () {
+            showToast('Erro ao cadastrar mesa. Verifique se o backend está online.', 'error');
+          });
+      });
     });
   }
 

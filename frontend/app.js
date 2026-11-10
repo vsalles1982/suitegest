@@ -1,4 +1,4 @@
-// app.js — Verificação do status do backend SuiteSimulaFuncoes
+// app.js — Verificação do status do backend SUITEGEST
 
 (function () {
   'use strict';

@@ -117,9 +117,11 @@
     tableNumberEl.textContent = order ? String(getTableNumber(order)) : '—';
     var status = order ? String(getField(order, ['status'])).toLowerCase() : '';
     statusEl.textContent = STATUS_LABELS[status] || (order ? getField(order, ['status']) : '—');
-    paymentEl.textContent = (order && order.payment && order.payment.methodLabel)
-      ? 'Pago com ' + order.payment.methodLabel
-      : '—';
+    if (paymentEl) {
+      paymentEl.textContent = (order && order.payment && order.payment.methodLabel)
+        ? 'Pago com ' + order.payment.methodLabel
+        : '—';
+    }
     if (printReceiptButton) {
       printReceiptButton.hidden = !(order && order.payment);
     }
@@ -181,8 +183,10 @@
     statusEl.textContent = '—';
     totalEl.textContent = '—';
     totalCellEl.textContent = '—';
-    paymentEl.textContent = '—';
     lastOrder = null;
+    if (paymentEl) {
+      paymentEl.textContent = '—';
+    }
     if (printReceiptButton) {
       printReceiptButton.hidden = true;
     }
@@ -336,7 +340,7 @@
   if (closeButton && paymentModal) {
     closeButton.addEventListener('click', function () {
       if (!orderId) {
-        alert('Comanda não informada');
+        showToast('Comanda não informada', 'error');
         return;
       }
       openPaymentModal();
@@ -360,7 +364,7 @@
       event.preventDefault();
 
       if (!orderId) {
-        alert('Comanda não informada');
+        showToast('Comanda não informada', 'error');
         return;
       }
 
@@ -375,6 +379,7 @@
           if (response.status === 200) {
             return response.json().catch(function () { return null; }).then(function (data) {
               closePaymentModal();
+              showToast('Comanda fechada com sucesso', 'success');
               // Atualiza a tela com a comanda fechada (inclui payment) e
               // exibe o botão "Imprimir Cupom" (ver renderOrder).
               renderOrder(data && data.order ? data.order : data);
@@ -382,12 +387,12 @@
             });
           }
           return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao fechar comanda (HTTP ' + response.status + ').'));
+            showToast((data && data.error) || ('Erro ao fechar comanda (HTTP ' + response.status + ').'), 'error');
             return null;
           });
         })
         .catch(function () {
-          alert('Erro ao fechar comanda. Verifique se o backend está online.');
+          showToast('Erro ao fechar comanda. Verifique se o backend está online.', 'error');
         });
     });
   }
@@ -413,7 +418,7 @@
       event.preventDefault();
 
       if (!orderId) {
-        alert('Comanda não informada');
+        showToast('Comanda não informada', 'error');
         return;
       }
 
@@ -428,16 +433,17 @@
         .then(function (response) {
           if (response.status === 201) {
             closeAddItemModal();
+            showToast('Item adicionado à comanda', 'success');
             loadOrder();
             return null;
           }
           return response.json().catch(function () { return null; }).then(function (data) {
-            alert((data && data.error) || ('Erro ao adicionar item (HTTP ' + response.status + ').'));
+            showToast((data && data.error) || ('Erro ao adicionar item (HTTP ' + response.status + ').'), 'error');
             return null;
           });
         })
         .catch(function () {
-          alert('Erro ao adicionar item. Verifique se o backend está online.');
+          showToast('Erro ao adicionar item. Verifique se o backend está online.', 'error');
         });
     });
   }
@@ -465,7 +471,7 @@
       'td,th{padding:4px 0;text-align:left}th{border-bottom:1px solid #111}' +
       '.total{font-weight:bold;text-align:right;margin-top:8px}' +
       '.center{text-align:center}</style></head><body>' +
-      '<h1>SuiteSimulaFuncoes</h1>' +
+      '<h1>SUITEGEST</h1>' +
       '<p class="center">Cupom não fiscal</p>' +
       '<p>Comanda: ' + escapeHtml(orderId) + ' &middot; Mesa: ' + escapeHtml(getTableNumber(order)) + '</p>' +
       '<table><thead><tr><th>Produto</th><th>Qtd</th><th>Subtotal</th></tr></thead>' +
@@ -480,7 +486,7 @@
     printReceiptButton.addEventListener('click', function () {
       var receiptWindow = window.open('', '_blank');
       if (!receiptWindow) {
-        alert('Permita pop-ups para imprimir o cupom.');
+        showToast('Permita pop-ups para imprimir o cupom.', 'error');
         return;
       }
       receiptWindow.document.write(buildReceiptHtml(lastOrder || {}));

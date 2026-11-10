@@ -346,7 +346,9 @@ async function orderRoutes(fastify) {
    *
    * Contrato (backend/README.md; o docs/backlog-dashboard.md cobre só o
    * dashboard e não existe no repositório): itens com subtotais e total
-   * formatados, forma de pagamento (quando houver) com comissão do garçom
+   * formatados, número da mesa (tableNumber), identificação do
+   * estabelecimento (company, fallback "SUITEGEST" em company_profile),
+   * forma de pagamento (quando houver) com comissão do garçom
    * snapshotada, closedAt (data/hora do fechamento) e printedAt (carimbo
    * do pedido de impressão). Comanda ABERTA → 409 (cupom é comprovante
    * de comanda fechada); comanda inexistente → 404; id inválido → 400.
@@ -358,7 +360,15 @@ async function orderRoutes(fastify) {
 
     const db = getDatabase();
 
-    const orderRow = db.prepare('SELECT * FROM "orders" WHERE id = ?').get(id);
+    // JOIN para trazer o número da mesa (contrato do cupom, Bloco 6).
+    const orderRow = db
+      .prepare(
+        `SELECT o.*, t.number AS table_number
+           FROM "orders" o
+           JOIN "tables" t ON t.id = o.table_id
+          WHERE o.id = ?`,
+      )
+      .get(id);
     if (!orderRow) {
       return reply.code(404).send({ error: `Comanda ${id} não existe.` });
     }
@@ -400,9 +410,21 @@ async function orderRoutes(fastify) {
       };
     }
 
+    // Bloco 6 (pendência do QA): identificação do estabelecimento no cupom.
+    // Uma linha em company_profile; fallback "SUITEGEST" já semeadura.
+    const profile = db
+      .prepare('SELECT name, address, phone FROM company_profile ORDER BY id LIMIT 1')
+      .get();
+
     return reply.code(200).send({
       orderId: orderRow.id,
       tableId: orderRow.table_id,
+      tableNumber: orderRow.table_number,
+      company: {
+        name: profile?.name ?? 'SUITEGEST',
+        address: profile?.address ?? null,
+        phone: profile?.phone ?? null,
+      },
       items,
       total,
       totalFormatted: formatBRL(total),
