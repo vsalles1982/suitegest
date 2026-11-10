@@ -61,6 +61,49 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_products_created_at
     ON products (created_at);
 
+  -- Bloco 6 (Gestão de Caixa): turnos de caixa e lançamentos.
+  -- Um turno aberto por vez (abrir/fechar é um ciclo: open → close).
+  -- opening_amount é o fundo de troco; counted_amount é o dinheiro contado
+  -- no fechamento (null até fechar) — a divergência (variance) é derivada.
+  CREATE TABLE IF NOT EXISTS cash_shifts (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    operator       TEXT    NOT NULL
+                           CHECK (length(trim(operator)) BETWEEN 2 AND 80),
+    opening_amount INTEGER NOT NULL DEFAULT 0
+                           CHECK (opening_amount >= 0),
+    opened_at      TEXT    NOT NULL
+                           DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    closed_at      TEXT,
+    counted_amount INTEGER,
+    status         TEXT    NOT NULL DEFAULT 'open'
+                           CHECK (status IN ('open', 'closed'))
+  ) STRICT;
+
+  -- Lançamentos do turno. 'sale' é gerado AUTOMATICAMENTE quando uma
+  -- comanda é fechada com pagamento em dinheiro e há turno aberto;
+  -- 'cash_in'/'cash_out' são suprimento/sangria manuais.
+  CREATE TABLE IF NOT EXISTS cash_transactions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    shift_id   INTEGER NOT NULL
+                       REFERENCES cash_shifts (id)
+                       ON UPDATE CASCADE
+                       ON DELETE RESTRICT,
+    type       TEXT    NOT NULL
+                       CHECK (type IN ('sale', 'cash_in', 'cash_out')),
+    amount     INTEGER NOT NULL
+                       CHECK (amount > 0),
+    note       TEXT,
+    order_id   INTEGER
+                       REFERENCES "orders" (id)
+                       ON UPDATE CASCADE
+                       ON DELETE SET NULL,
+    created_at TEXT    NOT NULL
+                       DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS idx_cash_transactions_shift
+    ON cash_transactions (shift_id);
+
   -- Bloco 3 (Gestão de Garçons): funcionários e atribuição às mesas.
   -- commission_bps é a comissão em basis points (1000 = 10%; 10000 = 100%).
   -- active = 0 desliga o funcionário sem apagar histórico.

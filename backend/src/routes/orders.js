@@ -517,6 +517,21 @@ async function orderRoutes(fastify) {
         payment = db
           .prepare('SELECT * FROM "payments" WHERE id = ?')
           .get(paymentResult.lastInsertRowid);
+
+        // Bloco 6: pagamento em DINHEIRO entra como lançamento 'sale' no
+        // turno de caixa aberto no instante do fechamento (mesma transação:
+        // a venda e o lançamento existem juntos ou juntos não existem).
+        // Decisão: sem turno aberto, a venda prossegue e NÃO é computada.
+        if (paymentMethod === 'dinheiro') {
+          const openShift = db
+            .prepare("SELECT id FROM cash_shifts WHERE status = 'open' ORDER BY id DESC")
+            .get();
+          if (openShift) {
+            db.prepare(
+              "INSERT INTO cash_transactions (shift_id, type, amount, note, order_id) VALUES (?, 'sale', ?, ?, ?)",
+            ).run(openShift.id, total, `Comanda #${id} (dinheiro)`, id);
+          }
+        }
       }
 
       db.exec('COMMIT');

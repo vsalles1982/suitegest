@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Caixa — SuiteSimulaFuncoes</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container">
+      <p><a href="index.html" class="back-link">&larr; Voltar para a página inicial</a></p>
+      <h1>Caixa</h1>
+      <p class="subtitle">Abertura, movimentações e fechamento de caixa por turno</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <p id="cash-message" class="empty-state">Carregando caixa…</p>
+
+    <section id="open-cash-section" hidden>
+      <h2>Abrir Caixa</h2>
+      <p class="section-description">Não há turno aberto. Informe o valor inicial para abrir o caixa.</p>
+
+      <form id="open-cash-form" class="product-form">
+        <div class="form-field">
+          <label for="initial-amount">Valor Inicial (em centavos)</label>
+          <input type="number" id="initial-amount" name="initialAmount" value="0" min="0" step="1" required />
+        </div>
+        <div class="form-field form-actions">
+          <button type="submit" class="submit-button">Abrir Caixa</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="cash-open-section" hidden>
+      <h2>Caixa Aberto</h2>
+
+      <div class="order-summary">
+        <div class="order-summary-item">
+          <span class="order-summary-label">Saldo Atual</span>
+          <strong id="cash-balance">—</strong>
+        </div>
+        <div class="order-summary-item">
+          <span class="order-summary-label">Valor Inicial</span>
+          <strong id="cash-initial">—</strong>
+        </div>
+        <div class="order-summary-item">
+          <span class="order-summary-label">Status</span>
+          <strong id="cash-status">Aberto</strong>
+        </div>
+      </div>
+
+      <div class="order-actions">
+        <button type="button" id="sangria-button" class="submit-button">Sangria</button>
+        <button type="button" id="suprimento-button" class="submit-button">Suprimento</button>
+        <button type="button" id="close-cash-button" class="submit-button">Fechar Caixa</button>
+      </div>
+
+      <h2>Movimentações</h2>
+      <div class="table-wrapper">
+        <table class="order-table">
+          <thead>
+            <tr>
+              <th scope="col">Tipo</th>
+              <th scope="col">Descrição</th>
+              <th scope="col">Valor</th>
+            </tr>
+          </thead>
+          <tbody id="movements-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>SuiteSimulaFuncoes — Gestão não fiscal de estabelecimentos de alimentação.</p>
+    </div>
+  </footer>
+
+  <script src="caixa.js"></script>
+</body>
+</html>

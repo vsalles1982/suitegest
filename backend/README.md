@@ -57,6 +57,10 @@ PORT=3001 HOST=127.0.0.1 npm start
 | GET    | `/products/low-stock` | Produtos com `stock < minStock` (com `missing`) | Array de produto + `missing` (200)                |
 | GET    | `/reports/dashboard` | Cards do Dashboard (agregados de caixa)          | `{ ordersCount, closedOrders, total(+Formatted), averageTicket(+Formatted), topItems[], byMethod[], ... }` |
 | GET    | `/orders/:id/receipt` | Cupom para impressão da comanda fechada         | `{ orderId, items[], total(+Formatted), payment, closedAt, printedAt }` |
+| POST   | `/cash/shifts/open`  | Abre turno de caixa (`operator`, `openingAmount`?) | Turno + `balance` (201 / 409 se já aberto)       |
+| GET    | `/cash/shifts/current` | Turno aberto com saldo em tempo real           | Turno + `balance` (200 / 404 sem turno)         |
+| POST   | `/cash/shifts/close` | Fecha o turno aberto (`countedAmount`? → `variance`) | Turno fechado + `balance` + `variance` (200 / 409) |
+| POST   | `/cash/transactions` | Suprimento (`cash_in`) / sangria (`cash_out`)   | Lançamento (201 / 400 / 409 sem turno)          |
 | POST   | `/products`        | Cadastra um produto                              | `{ id, name, price, categoryId, ... }` (201 / 400)  |
 | GET    | `/tables`          | Lista mesas, com garçom atribuído                | Array de `{ id, number, status, employeeId, employeeName }` |
 | POST   | `/tables`          | Cadastra mesa (status inicial `free`)            | `{ id, number, status }` (201)                      |
@@ -224,6 +228,46 @@ acertados com o fundador e documentados aqui.*
   - erros: comanda **aberta** → 409 (cupom é comprovante de comanda
     fechada); inexistente → 404; id inválido → 400.
 
+### Gestão de Caixa (Bloco 6)
+
+*O `docs/backlog-caixa.md` não existe no repositório; contratos a seguir
+acertados com o fundador e documentados aqui.*
+
+- **Tabelas** (CREATE IF NOT EXISTS idempotente na inicialização):
+  - `cash_shifts`: `operator` (2–80), `opening_amount` (fundo de troco,
+    >= 0, padrão 0), `opened_at`, `closed_at` (null enquanto aberto),
+    `counted_amount` (dinheiro contado no fechamento; null até fechar),
+    `status` (`open`/`closed`). **Regra central: apenas um turno aberto por
+    vez** — segunda abertura → 409.
+  - `cash_transactions`: `shift_id` (FK), `type` (`sale`, `cash_in`,
+    `cash_out`), `amount` (> 0, centavos), `note`, `order_id` (FK à
+    comanda, para as vendas), `created_at`.
+- **`POST /cash/shifts/open`** — `{ operator, openingAmount? }` → 201 com a
+  view do turno + `balance` (fundo, vendas 0...). Sem turno → 400 em
+  validações, 409 em duplicado.
+- **`GET /cash/shifts/current`** — turno aberto com saldo em tempo real:
+  `balance = { cashSales(+Formatted), cashSalesCount, cashIn(+Formatted),
+  cashOut(+Formatted), expectedCash(+Formatted) }`, onde `expectedCash =
+  fundo + vendas em dinheiro + suprimentos - sangrias`. Sem turno → 404.
+- **`POST /cash/transactions`** — apenas `cash_in` (suprimento) e
+  `cash_out` (sangria); a venda (`sale`) é automática, nunca manual → 400
+  em outro tipo. Exige turno aberto → 409. Sangria maior que `expectedCash`
+  → 400 (gaveta não fica negativa). `note` opcional (texto).
+- **`POST /cash/shifts/close`** — fecha O turno aberto (409 sem turno),
+  em `BEGIN IMMEDIATE` (pagamento concorrente vira venda do turno
+  seguinte). Corpo opcional `{ countedAmount }`; a resposta traz
+  `balance.expectedCash` (cálculo do esperado no fechamento), `variance =
+  countedAmount - expectedCash` e `varianceFormatted` (null sem contagem).
+  Fechar sem turno → 409; novo turno recomeça do zero (não herda vendas
+  anteriores).
+- **Integração com vendas** (`orders.js`, fechamento de comanda): pagamento
+  com `paymentMethod: "dinheiro"` e **turno aberto** insere o lançamento
+  `sale` (amount = total da comanda) **na mesma transação do pagamento** —
+  a venda e o lançamento existem juntos ou juntos não existem. **Decisão**:
+  pagamento em dinheiro **sem turno aberto** prossegue normalmente e não é
+  computado no caixa (não há bloqueio de venda); o turno novo nãoherda
+  vendas anteriores (não existe 'sale' pendente).
+
 Erros comuns: `404` (recurso inexistente), `409` (nome duplicado de categoria) e
 `400` (validação de payload ou categoria com produtos vinculados ao excluir).
 
@@ -291,7 +335,7 @@ backend/
     ├── database.js     # SQLite, schema e migração leve
     ├── money.js        # formatBRL (centavos -> moeda)
     ├── paymentMethods.js # métodos/rótulos de pagamento e fuso do negócio
-    └── routes/         # products, categories, tables, orders, reports, employees```
+    └── routes/         # products, categories, tables, orders, reports, employees, cash```
 
 ## Próximos passos (escopo do CHARTER)
 
